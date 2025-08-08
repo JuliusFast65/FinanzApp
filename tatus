@@ -1,0 +1,99 @@
+[1mdiff --git a/src/i18n/locales/en.json b/src/i18n/locales/en.json[m
+[1mindex 263067e..ffbfd81 100644[m
+[1m--- a/src/i18n/locales/en.json[m
+[1m+++ b/src/i18n/locales/en.json[m
+[36m@@ -81,7 +81,6 @@[m
+     "startDate": "Start Date",[m
+     "endDate": "End Date",[m
+     "saveChanges": "Save Changes",[m
+[31m-    "createActivity": "Create Activity",[m
+     "startDateAfterEndDate": "Start date cannot be after end date.",[m
+     "activityManager": "Activity Manager",[m
+     "newActivity": "New Activity",[m
+[36m@@ -91,7 +90,6 @@[m
+     "activities": "activities",[m
+     "defined": "defined",[m
+     "definedPlural": "defined",[m
+[31m-    "sublevels": "Sublevels",[m
+     "freePlan": "Free Plan",[m
+     "goal": "Goal",[m
+     "times": "times",[m
+[36m@@ -346,11 +344,9 @@[m
+       "totalPoints": "Total points",[m
+       "registeredDays": "Registered days",[m
+       "goal": "Goal",[m
+[31m-      "times": "times",[m
+[31m-      "points": "points",[m
+[31m-      "completed": "completed",[m
+       "times": "Times",[m
+       "points": "Points",[m
+[32m+[m[32m      "completed": "completed",[m
+       "days": "Days"[m
+     },[m
+     "unknownActivity": "Unknown Activity"[m
+[1mdiff --git a/src/i18n/locales/es.json b/src/i18n/locales/es.json[m
+[1mindex 0054b38..2c441b5 100644[m
+[1m--- a/src/i18n/locales/es.json[m
+[1m+++ b/src/i18n/locales/es.json[m
+[36m@@ -81,7 +81,6 @@[m
+     "startDate": "Fecha de Inicio",[m
+     "endDate": "Fecha de Fin",[m
+     "saveChanges": "Guardar Cambios",[m
+[31m-    "createActivity": "Crear Actividad",[m
+     "startDateAfterEndDate": "La fecha de inicio no puede ser posterior a la fecha de fin.",[m
+     "activityManager": "Gestor de Actividades",[m
+     "newActivity": "Nueva Actividad",[m
+[36m@@ -91,7 +90,6 @@[m
+     "activities": "actividades",[m
+     "defined": "definida",[m
+     "definedPlural": "definidas",[m
+[31m-    "sublevels": "Subniveles",[m
+     "freePlan": "Plan Gratuito",[m
+     "goal": "Meta",[m
+     "times": "veces",[m
+[36m@@ -346,11 +344,9 @@[m
+       "totalPoints": "Total de puntos",[m
+       "registeredDays": "Días registrados",[m
+       "goal": "Meta",[m
+[31m-      "times": "veces",[m
+[31m-      "points": "puntos",[m
+[31m-      "completed": "completado",[m
+       "times": "Veces",[m
+       "points": "Puntos",[m
+[32m+[m[32m      "completed": "completado",[m
+       "days": "Días"[m
+     },[m
+     "unknownActivity": "Actividad Desconocida"[m
+[1mdiff --git a/src/i18n/locales/fr.json b/src/i18n/locales/fr.json[m
+[1mindex 9d9e25b..9802b97 100644[m
+[1m--- a/src/i18n/locales/fr.json[m
+[1m+++ b/src/i18n/locales/fr.json[m
+[36m@@ -81,7 +81,6 @@[m
+     "startDate": "Date de Début",[m
+     "endDate": "Date de Fin",[m
+     "saveChanges": "Enregistrer les Modifications",[m
+[31m-    "createActivity": "Créer une Activité",[m
+     "startDateAfterEndDate": "La date de début ne peut pas être postérieure à la date de fin.",[m
+     "activityManager": "Gestionnaire d'Activités",[m
+     "newActivity": "Nouvelle Activité",[m
+[36m@@ -91,7 +90,6 @@[m
+     "activities": "activités",[m
+     "defined": "définie",[m
+     "definedPlural": "définies",[m
+[31m-    "sublevels": "Sous-niveaux",[m
+     "freePlan": "Plan Gratuit",[m
+     "goal": "Objectif",[m
+     "times": "fois",[m
+[36m@@ -346,11 +344,9 @@[m
+       "totalPoints": "Total de points",[m
+       "registeredDays": "Jours enregistrés",[m
+       "goal": "Objectif",[m
+[31m-      "times": "fois",[m
+[31m-      "points": "points",[m
+[31m-      "completed": "terminé",[m
+       "times": "Fois",[m
+       "points": "Points",[m
+[32m+[m[32m      "completed": "terminé",[m
+       "days": "Jours"[m
+     },[m
+     "unknownActivity": "Activité Inconnue"[m

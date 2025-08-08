@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Safari iOS PWA Test - Introspect</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+            background: #f3f4f6;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .test-item {
+            margin: 15px 0;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid;
+        }
+        .pass {
+            background: #d1fae5;
+            border-left-color: #10b981;
+        }
+        .fail {
+            background: #fee2e2;
+            border-left-color: #ef4444;
+        }
+        .warning {
+            background: #fef3c7;
+            border-left-color: #f59e0b;
+        }
+        .info {
+            background: #dbeafe;
+            border-left-color: #3b82f6;
+        }
+        .icon-preview {
+            display: inline-block;
+            margin: 10px;
+            text-align: center;
+        }
+        .icon-preview img {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+        }
+        .steps {
+            background: #f8fafc;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+        }
+        .steps ol {
+            margin: 0;
+            padding-left: 20px;
+        }
+        .steps li {
+            margin: 8px 0;
+        }
+        .highlight {
+            background: #fef3c7;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🍎 Safari iOS PWA Diagnostic</h1>
+        <p>Esta página verifica específicamente los criterios para que aparezca "Agregar a pantalla de inicio" en Safari iOS.</p>
+
+        <div id="test-results">
+            <h2>🔍 Resultados de Diagnóstico:</h2>
+            <div id="tests"></div>
+        </div>
+
+        <h2>📱 Iconos para iOS:</h2>
+        <div class="icon-preview">
+            <img src="/pwa-192x192.png" alt="180x180" width="90" height="90">
+            <p>180x180 (Apple)</p>
+        </div>
+        <div class="icon-preview">
+            <img src="/pwa-192x192.png" alt="192x192" width="96" height="96">
+            <p>192x192</p>
+        </div>
+        <div class="icon-preview">
+            <img src="/pwa-512x512.png" alt="512x512" width="128" height="128">
+            <p>512x512</p>
+        </div>
+
+        <div class="info">
+            <h3>ℹ️ Información del Dispositivo:</h3>
+            <p><strong>User Agent:</strong> <span id="user-agent"></span></p>
+            <p><strong>Es Safari iOS:</strong> <span id="is-safari-ios"></span></p>
+            <p><strong>Modo Standalone:</strong> <span id="is-standalone"></span></p>
+            <p><strong>HTTPS:</strong> <span id="is-https"></span></p>
+        </div>
+
+        <div class="steps">
+            <h3>📋 Pasos para Instalar en Safari iOS:</h3>
+            <ol>
+                <li>Asegúrate de que todos los tests arriba muestren <span class="highlight">✅ PASÓ</span></li>
+                <li>Toca el botón <span class="highlight">Compartir</span> (cuadrado con flecha)</li>
+                <li>Desplaza hacia abajo en el menú</li>
+                <li>Busca <span class="highlight">"Agregar a pantalla de inicio"</span></li>
+                <li>Si no aparece, toca <span class="highlight">"Más"</span> y activa la opción</li>
+                <li>Toca <span class="highlight">"Agregar"</span> para confirmar</li>
+            </ol>
+        </div>
+
+        <div class="warning">
+            <h3>⚠️ Si "Agregar a pantalla de inicio" no aparece:</h3>
+            <ul>
+                <li><strong>Recarga la página</strong> completamente (toca el botón de recarga)</li>
+                <li><strong>Espera 10 segundos</strong> después de que la página cargue</li>
+                <li><strong>Limpia datos de Safari:</strong> Configuración > Safari > Avanzado > Datos de sitios web</li>
+                <li><strong>Verifica que estés en HTTPS</strong> (no HTTP)</li>
+                <li><strong>Intenta en modo incógnito</strong> para descartar problemas de caché</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        const tests = [];
+        
+        function addTest(name, test, required = true) {
+            const result = test();
+            tests.push({ name, result, required });
+        }
+
+        // Test 1: Es Safari iOS
+        addTest('Safari iOS', () => {
+            return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream && /Safari/.test(navigator.userAgent);
+        });
+
+        // Test 2: HTTPS
+        addTest('HTTPS', () => {
+            return window.location.protocol === 'https:';
+        });
+
+        // Test 3: Apple touch icon existe
+        addTest('Apple Touch Icon', async () => {
+            try {
+                const response = await fetch('/pwa-192x192.png');
+                return response.ok;
+            } catch {
+                return false;
+            }
+        });
+
+        // Test 4: Manifest existe
+        addTest('Manifest JSON', async () => {
+            try {
+                const response = await fetch('/manifest.json');
+                return response.ok;
+            } catch {
+                return false;
+            }
+        });
+
+        // Test 5: Apple mobile web app capable
+        addTest('Apple Mobile Web App Capable', () => {
+            const meta = document.querySelector('meta[name="apple-mobile-web-app-capable"]');
+            return meta && meta.content === 'yes';
+        });
+
+        // Test 6: Apple mobile web app title
+        addTest('Apple Mobile Web App Title', () => {
+            const meta = document.querySelector('meta[name="apple-mobile-web-app-title"]');
+            return meta && meta.content;
+        });
+
+        // Test 7: Apple touch icon meta tag
+        addTest('Apple Touch Icon Meta Tag', () => {
+            const link = document.querySelector('link[rel="apple-touch-icon"]');
+            return link && link.href;
+        });
+
+        // Test 8: Viewport meta tag
+        addTest('Viewport Meta Tag', () => {
+            const meta = document.querySelector('meta[name="viewport"]');
+            return meta && meta.content.includes('width=device-width');
+        });
+
+        // Test 9: No está en modo standalone
+        addTest('No está en modo standalone', () => {
+            return !window.navigator.standalone;
+        });
+
+        // Test 10: Service Worker registrado
+        addTest('Service Worker', () => {
+            return 'serviceWorker' in navigator;
+        });
+
+        // Run all tests
+        async function runTests() {
+            const resultsDiv = document.getElementById('tests');
+            
+            for (const test of tests) {
+                const result = await test.result;
+                const div = document.createElement('div');
+                div.className = `test-item ${result ? 'pass' : (test.required ? 'fail' : 'warning')}`;
+                div.innerHTML = `
+                    <strong>${test.name}:</strong> 
+                    ${result ? '✅ PASÓ' : (test.required ? '❌ FALLÓ' : '⚠️ ADVERTENCIA')}
+                `;
+                resultsDiv.appendChild(div);
+            }
+            
+            // Summary
+            const passed = tests.filter(t => t.result).length;
+            const total = tests.length;
+            const summary = document.createElement('div');
+            summary.className = `test-item ${passed === total ? 'pass' : 'fail'}`;
+            summary.innerHTML = `<strong>Resumen:</strong> ${passed}/${total} pruebas pasaron`;
+            resultsDiv.appendChild(summary);
+
+            // Device info
+            document.getElementById('user-agent').textContent = navigator.userAgent;
+            document.getElementById('is-safari-ios').textContent = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream && /Safari/.test(navigator.userAgent) ? 'Sí' : 'No';
+            document.getElementById('is-standalone').textContent = window.navigator.standalone ? 'Sí' : 'No';
+            document.getElementById('is-https').textContent = window.location.protocol === 'https:' ? 'Sí' : 'No';
+        }
+
+        // Run tests when page loads
+        window.addEventListener('load', runTests);
+    </script>
+</body>
+</html> 

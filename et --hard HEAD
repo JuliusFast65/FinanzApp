@@ -1,0 +1,5 @@
+[33m705e677[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mpremium[m[33m, [m[1;31morigin/premium[m[33m)[m Correcciones en el panel de estadísticas.
+[33m32cf460[m Mejora para seleccionar actividades a registrar.
+[33m27ad9cd[m Agregar al contexto de las IAs la edad y sexo del usuario.
+[33ma7310ad[m Algunas internacionalizaciones pendientes.
+[33m84658a1[m Intenacionalización de características premium. Mover botón de archivo al pie de página.

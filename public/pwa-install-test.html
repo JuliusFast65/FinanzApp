@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prueba de Instalación PWA - Introspect</title>
+    <link rel="manifest" href="/manifest.json">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .test-result {
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        .pass { background-color: #d4edda; color: #155724; }
+        .fail { background-color: #f8d7da; color: #721c24; }
+        .warning { background-color: #fff3cd; color: #856404; }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+        .info {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .log {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            padding: 10px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 Prueba de Instalación PWA - Introspect</h1>
+        
+        <div class="info">
+            <strong>Información del navegador:</strong><br>
+            User Agent: <span id="userAgent"></span><br>
+            Plataforma: <span id="platform"></span><br>
+            Service Worker soportado: <span id="swSupport"></span><br>
+            Modo standalone: <span id="standalone"></span>
+        </div>
+
+        <div class="test-section">
+            <h2>📋 Criterios de Instalación PWA:</h2>
+            <div id="criteriaResults"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>🔧 Prueba de Instalación:</h2>
+            <button id="testInstallBtn" disabled>Probar Instalación</button>
+            <button id="manualInstallBtn" disabled>Instalación Manual</button>
+            <div id="installStatus"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>📝 Log de Eventos:</h2>
+            <div id="eventLog" class="log"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>📱 Información del Manifest:</h2>
+            <div id="manifestInfo"></div>
+        </div>
+    </div>
+
+    <script>
+        let deferredPrompt = null;
+        const log = document.getElementById('eventLog');
+        const userAgent = document.getElementById('userAgent');
+        const platform = document.getElementById('platform');
+        const swSupport = document.getElementById('swSupport');
+        const standalone = document.getElementById('standalone');
+        const criteriaResults = document.getElementById('criteriaResults');
+        const testInstallBtn = document.getElementById('testInstallBtn');
+        const manualInstallBtn = document.getElementById('manualInstallBtn');
+        const installStatus = document.getElementById('installStatus');
+        const manifestInfo = document.getElementById('manifestInfo');
+
+        function addLog(message) {
+            const timestamp = new Date().toLocaleTimeString();
+            log.innerHTML += `[${timestamp}] ${message}\n`;
+            log.scrollTop = log.scrollHeight;
+        }
+
+        function addTestResult(test, passed, message) {
+            const resultDiv = document.createElement('div');
+            resultDiv.className = `test-result ${passed ? 'pass' : 'fail'}`;
+            resultDiv.innerHTML = `${passed ? '✅' : '❌'} ${test}: ${message}`;
+            criteriaResults.appendChild(resultDiv);
+        }
+
+        // Información del navegador
+        userAgent.textContent = navigator.userAgent;
+        platform.textContent = navigator.platform;
+        swSupport.textContent = 'serviceWorker' in navigator ? 'Sí' : 'No';
+        standalone.textContent = window.matchMedia('(display-mode: standalone)').matches ? 'Sí' : 'No';
+
+        addLog('Página cargada');
+
+        // Verificar criterios de instalación
+        async function checkInstallationCriteria() {
+            addLog('Verificando criterios de instalación...');
+
+            // 1. HTTPS
+            const isHTTPS = location.protocol === 'https:';
+            addTestResult('HTTPS', isHTTPS, isHTTPS ? 'Conexión segura' : 'Se requiere HTTPS');
+
+            // 2. Service Worker
+            const hasServiceWorker = 'serviceWorker' in navigator;
+            addTestResult('Service Worker', hasServiceWorker, hasServiceWorker ? 'Soportado' : 'No soportado');
+
+            // 3. Manifest
+            try {
+                const manifestResponse = await fetch('/manifest.json');
+                const manifest = await manifestResponse.json();
+                
+                const hasManifest = !!manifest;
+                addTestResult('Manifest', hasManifest, hasManifest ? 'Cargado correctamente' : 'No encontrado');
+
+                // Verificar campos requeridos
+                const hasName = !!manifest.name;
+                const hasShortName = !!manifest.short_name;
+                const hasIcons = !!manifest.icons && manifest.icons.length > 0;
+                const hasDisplay = manifest.display === 'standalone';
+
+                addTestResult('Nombre', hasName, hasName ? manifest.name : 'Falta nombre');
+                addTestResult('Nombre corto', hasShortName, hasShortName ? manifest.short_name : 'Falta nombre corto');
+                addTestResult('Iconos', hasIcons, hasIcons ? `${manifest.icons.length} iconos encontrados` : 'Faltan iconos');
+                addTestResult('Display standalone', hasDisplay, hasDisplay ? 'Configurado' : 'No configurado');
+
+                // Mostrar información del manifest
+                manifestInfo.innerHTML = `
+                    <strong>Nombre:</strong> ${manifest.name}<br>
+                    <strong>Nombre corto:</strong> ${manifest.short_name}<br>
+                    <strong>Descripción:</strong> ${manifest.description}<br>
+                    <strong>Display:</strong> ${manifest.display}<br>
+                    <strong>Iconos:</strong> ${manifest.icons.length}<br>
+                    <strong>Scope:</strong> ${manifest.scope}<br>
+                    <strong>Start URL:</strong> ${manifest.start_url}
+                `;
+
+                addLog(`Manifest cargado: ${manifest.name}`);
+            } catch (error) {
+                addTestResult('Manifest', false, 'Error cargando manifest');
+                addLog(`Error cargando manifest: ${error.message}`);
+            }
+
+            // 4. Verificar iconos
+            try {
+                const icon192Response = await fetch('/pwa-192x192.png');
+                const icon512Response = await fetch('/pwa-512x512.png');
+                
+                const hasIcon192 = icon192Response.ok;
+                const hasIcon512 = icon512Response.ok;
+
+                addTestResult('Icono 192x192', hasIcon192, hasIcon192 ? 'Encontrado' : 'No encontrado');
+                addTestResult('Icono 512x512', hasIcon512, hasIcon512 ? 'Encontrado' : 'No encontrado');
+
+                addLog(`Iconos verificados: 192x192=${hasIcon192}, 512x512=${hasIcon512}`);
+            } catch (error) {
+                addTestResult('Iconos', false, 'Error verificando iconos');
+                addLog(`Error verificando iconos: ${error.message}`);
+            }
+        }
+
+        // Evento beforeinstallprompt
+        window.addEventListener('beforeinstallprompt', (e) => {
+            addLog('Evento beforeinstallprompt disparado');
+            
+            // Prevenir el prompt automático
+            e.preventDefault();
+            
+            // Guardar el evento
+            deferredPrompt = e;
+            
+            // Habilitar botón de instalación
+            testInstallBtn.disabled = false;
+            manualInstallBtn.disabled = false;
+            
+            addLog('Prompt de instalación disponible');
+            installStatus.innerHTML = '<div class="test-result pass">✅ Prompt de instalación disponible</div>';
+        });
+
+        // Botón de prueba de instalación
+        testInstallBtn.addEventListener('click', async () => {
+            if (!deferredPrompt) {
+                addLog('No hay prompt de instalación disponible');
+                return;
+            }
+
+            addLog('Iniciando instalación...');
+            installStatus.innerHTML = '<div class="test-result warning">⏳ Iniciando instalación...</div>';
+
+            try {
+                // Mostrar el prompt
+                deferredPrompt.prompt();
+                
+                // Esperar la respuesta
+                const { outcome } = await deferredPrompt.userChoice;
+                
+                if (outcome === 'accepted') {
+                    addLog('Usuario aceptó la instalación');
+                    installStatus.innerHTML = '<div class="test-result pass">✅ Usuario aceptó la instalación</div>';
+                } else {
+                    addLog('Usuario rechazó la instalación');
+                    installStatus.innerHTML = '<div class="test-result fail">❌ Usuario rechazó la instalación</div>';
+                }
+                
+                // Limpiar el prompt
+                deferredPrompt = null;
+                testInstallBtn.disabled = true;
+                
+            } catch (error) {
+                addLog(`Error durante la instalación: ${error.message}`);
+                installStatus.innerHTML = `<div class="test-result fail">❌ Error: ${error.message}</div>`;
+            }
+        });
+
+        // Botón de instalación manual
+        manualInstallBtn.addEventListener('click', () => {
+            addLog('Mostrando instrucciones de instalación manual');
+            installStatus.innerHTML = `
+                <div class="test-result warning">
+                    📱 Instrucciones de instalación manual:<br>
+                    1. Toca el menú (⋮) en la esquina superior derecha<br>
+                    2. Selecciona "Instalar aplicación"<br>
+                    3. Confirma la instalación
+                </div>
+            `;
+        });
+
+        // Verificar si ya está instalada
+        if (window.matchMedia('(display-mode: standalone)').matches) {
+            addLog('Aplicación ya está instalada como PWA');
+            installStatus.innerHTML = '<div class="test-result pass">✅ Aplicación ya instalada como PWA</div>';
+        }
+
+        // Inicializar
+        checkInstallationCriteria();
+        addLog('Prueba de instalación PWA iniciada');
+    </script>
+</body>
+</html>

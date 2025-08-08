@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <script>
+      // On page load or when changing themes, best to add inline in `head` to avoid FOUC
+      if (localStorage.getItem('color-theme') === 'dark' || (!('color-theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+          document.documentElement.classList.add('dark');
+      } else {
+          document.documentElement.classList.remove('dark')
+      }
+    </script>
+    
+   <link rel="preconnect" href="https://fonts.googleapis.com">
+   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+   <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;700&family=Gochi+Hand&family=Indie+Flower&family=Kalam:wght@400;700&family=Lora:ital@0;1&family=Nunito+Sans:ital,opsz@0,6..12;1,6..12&family=Patrick+Hand&display=swap" rel="stylesheet">
+
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    
+    <!-- PWA Meta Tags -->
+    <meta name="theme-color" content="#111827" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Introspect" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="msapplication-TileColor" content="#111827" />
+    <meta name="msapplication-tap-highlight" content="no" />
+    <meta name="application-name" content="Introspect" />
+    <meta name="msapplication-TileImage" content="/pwa-192x192.png" />
+    
+    <!-- PWA Icons -->
+    <link rel="apple-touch-icon" href="/pwa-512x512.png" />
+    <link rel="apple-touch-icon" sizes="192x192" href="/pwa-192x192.png" />
+    <link rel="apple-touch-icon" sizes="512x512" href="/pwa-512x512.png" />
+    <link rel="mask-icon" href="/favicon.svg" color="#111827" />
+    
+    <title>Introspect | Tu Diario Personal</title>
+    <link rel="manifest" href="/manifest.json" />
+    
+    <!-- Capturar beforeinstallprompt globalmente -->
+    <script>
+        // Capturar el evento beforeinstallprompt globalmente
+        window.addEventListener('beforeinstallprompt', (e) => {
+            console.log('🎯 beforeinstallprompt capturado globalmente');
+            e.preventDefault();
+            window.deferredPrompt = e;
+        });
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

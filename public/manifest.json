@@ -1,0 +1,37 @@
+{
+  "name": "Introspect - Tu Diario Personal",
+  "short_name": "Introspect",
+  "id": "/",
+  "description": "Tu diario personal seguro y privado para guardar pensamientos y cultivar hábitos con propósito",
+  "theme_color": "#111827",
+  "background_color": "#111827",
+  "display": "standalone",
+  "orientation": "portrait",
+  "scope": "/",
+  "start_url": "/",
+  "categories": ["productivity", "lifestyle", "health"],
+  "lang": "es",
+  "dir": "ltr",
+  "icons": [
+    {
+      "src": "/pwa-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/pwa-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/pwa-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "form_factor": "wide"
+    }
+  ]
+} 

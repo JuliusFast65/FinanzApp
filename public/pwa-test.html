@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prueba PWA - Introspect</title>
+    <link rel="manifest" href="/manifest.json">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .test-result {
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        .pass { background-color: #d4edda; color: #155724; }
+        .fail { background-color: #f8d7da; color: #721c24; }
+        .warning { background-color: #fff3cd; color: #856404; }
+        .icon-preview {
+            display: inline-block;
+            text-align: center;
+            margin: 10px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .icon-preview img {
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .info {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 Prueba PWA - Introspect</h1>
+        
+        <div class="info">
+            <strong>Información del navegador:</strong><br>
+            User Agent: <span id="userAgent"></span><br>
+            Plataforma: <span id="platform"></span><br>
+            Service Worker soportado: <span id="swSupport"></span>
+        </div>
+
+        <div class="test-section">
+            <h2>📋 Tests de PWA:</h2>
+            <div id="testResults"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>📱 Iconos de la PWA:</h2>
+            <div class="icon-preview">
+                <img src="/pwa-192x192.png" alt="192x192" width="96" height="96">
+                <p>192x192</p>
+            </div>
+            <div class="icon-preview">
+                <img src="/pwa-512x512.png" alt="512x512" width="128" height="128">
+                <p>512x512</p>
+            </div>
+            <div class="icon-preview">
+                <img src="/pwa-192x192.png" alt="180x180" width="90" height="90">
+                <p>180x180 (Apple)</p>
+            </div>
+            <div class="icon-preview">
+                <img src="/favicon.svg" alt="196x196" width="98" height="98">
+                <p>196x196 (Favicon)</p>
+            </div>
+        </div>
+
+        <div class="test-section">
+            <h2>🔧 Acciones:</h2>
+            <button onclick="testInstallPrompt()">Probar Prompt de Instalación</button>
+            <button onclick="checkServiceWorker()">Verificar Service Worker</button>
+            <button onclick="testManifest()">Verificar Manifest</button>
+            <button onclick="clearCache()">Limpiar Cache</button>
+        </div>
+
+        <div class="test-section">
+            <h2>📊 Estado de Instalación:</h2>
+            <div id="installStatus"></div>
+        </div>
+    </div>
+
+    <script>
+        // Mostrar información del navegador
+        document.getElementById('userAgent').textContent = navigator.userAgent;
+        document.getElementById('platform').textContent = navigator.platform;
+        document.getElementById('swSupport').textContent = 'serviceWorker' in navigator ? 'Sí' : 'No';
+
+        let deferredPrompt = null;
+
+        // Capturar beforeinstallprompt
+        window.addEventListener('beforeinstallprompt', (e) => {
+            console.log('beforeinstallprompt event fired');
+            e.preventDefault();
+            deferredPrompt = e;
+            updateInstallStatus('beforeinstallprompt capturado');
+        });
+
+        // Función para agregar resultados de test
+        function addTest(name, result, details = '') {
+            const resultsDiv = document.getElementById('testResults');
+            const testDiv = document.createElement('div');
+            testDiv.className = `test-result ${result}`;
+            testDiv.innerHTML = `<strong>${name}:</strong> ${result === 'pass' ? '✅ PASÓ' : result === 'fail' ? '❌ FALLÓ' : '⚠️ ADVERTENCIA'} ${details}`;
+            resultsDiv.appendChild(testDiv);
+        }
+
+        // Función para actualizar estado de instalación
+        function updateInstallStatus(message) {
+            const statusDiv = document.getElementById('installStatus');
+            statusDiv.innerHTML += `<div>${new Date().toLocaleTimeString()}: ${message}</div>`;
+        }
+
+        // Test 1: Manifest existe
+        addTest('Manifest Existe', async () => {
+            try {
+                const response = await fetch('/manifest.json');
+                return response.ok ? 'pass' : 'fail';
+            } catch {
+                return 'fail';
+            }
+        }());
+
+        // Test 2: Manifest es válido JSON
+        addTest('Manifest JSON Válido', async () => {
+            try {
+                const response = await fetch('/manifest.json');
+                const manifest = await response.json();
+                return manifest.name && manifest.short_name ? 'pass' : 'fail';
+            } catch {
+                return 'fail';
+            }
+        }());
+
+        // Test 3: Service Worker registrado
+        addTest('Service Worker Registrado', async () => {
+            if (!('serviceWorker' in navigator)) return 'fail';
+            try {
+                const registration = await navigator.serviceWorker.getRegistration();
+                return registration ? 'pass' : 'fail';
+            } catch {
+                return 'fail';
+            }
+        }());
+
+        // Test 4: Display mode
+        addTest('Display Mode', () => {
+            const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
+            return isStandalone ? 'pass' : 'warning';
+        });
+
+        // Test 5: Icons exist
+        addTest('Icons Exist', async () => {
+            const icons = [
+                '/pwa-192x192.png',
+                '/pwa-512x512.png',
+                '/pwa-192x192.png',
+                '/favicon.svg'
+            ];
+            
+            let allExist = true;
+            for (const icon of icons) {
+                try {
+                    const response = await fetch(icon);
+                    if (!response.ok) allExist = false;
+                } catch {
+                    allExist = false;
+                }
+            }
+            return allExist ? 'pass' : 'fail';
+        }());
+
+        // Test 6: HTTPS
+        addTest('HTTPS', () => {
+            return location.protocol === 'https:' || location.hostname === 'localhost' ? 'pass' : 'fail';
+        });
+
+        // Función para probar prompt de instalación
+        async function testInstallPrompt() {
+            if (deferredPrompt) {
+                deferredPrompt.prompt();
+                const { outcome } = await deferredPrompt.userChoice;
+                updateInstallStatus(`Instalación ${outcome}`);
+                deferredPrompt = null;
+            } else {
+                updateInstallStatus('No hay prompt de instalación disponible');
+            }
+        }
+
+        // Función para verificar Service Worker
+        async function checkServiceWorker() {
+            if ('serviceWorker' in navigator) {
+                try {
+                    const registration = await navigator.serviceWorker.getRegistration();
+                    if (registration) {
+                        updateInstallStatus(`SW registrado: ${registration.scope}`);
+                        await registration.update();
+                        updateInstallStatus('SW actualizado');
+                    } else {
+                        updateInstallStatus('SW no registrado');
+                    }
+                } catch (error) {
+                    updateInstallStatus(`Error SW: ${error.message}`);
+                }
+            } else {
+                updateInstallStatus('SW no soportado');
+            }
+        }
+
+        // Función para verificar manifest
+        async function testManifest() {
+            try {
+                const response = await fetch('/manifest.json');
+                const manifest = await response.json();
+                updateInstallStatus(`Manifest: ${manifest.name} (${manifest.short_name})`);
+                updateInstallStatus(`Display: ${manifest.display}, Icons: ${manifest.icons.length}`);
+            } catch (error) {
+                updateInstallStatus(`Error manifest: ${error.message}`);
+            }
+        }
+
+        // Función para limpiar cache
+        async function clearCache() {
+            if ('caches' in window) {
+                try {
+                    const cacheNames = await caches.keys();
+                    await Promise.all(cacheNames.map(name => caches.delete(name)));
+                    updateInstallStatus('Cache limpiado');
+                } catch (error) {
+                    updateInstallStatus(`Error limpiando cache: ${error.message}`);
+                }
+            } else {
+                updateInstallStatus('Cache API no soportada');
+            }
+        }
+
+        // Verificar estado inicial
+        updateInstallStatus('Página cargada');
+        if (window.matchMedia('(display-mode: standalone)').matches) {
+            updateInstallStatus('Aplicación ya instalada');
+        }
+    </script>
+</body>
+</html> 

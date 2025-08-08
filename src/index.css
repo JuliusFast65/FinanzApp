@@ -1,0 +1,143 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Configuración base para temas */
+@layer base {
+  /* Transiciones suaves para cambios de tema */
+  * {
+    transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+  }
+  
+  /* Estilos base para modo claro */
+  .light {
+    color-scheme: light;
+  }
+  
+  /* Estilos base para modo oscuro */
+  .dark {
+    color-scheme: dark;
+  }
+}
+
+/* Animaciones personalizadas */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes shake {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  10%, 30%, 50%, 70%, 90% {
+    transform: translateX(-5px);
+  }
+  20%, 40%, 60%, 80% {
+    transform: translateX(5px);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.3s ease-out;
+}
+
+.animate-shake {
+  animation: shake 0.5s ease-in-out;
+}
+
+.animate-pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Añadimos un nuevo componente personalizado para el efecto de cuaderno */
+@layer components {
+  /* --- Estilos para el Modo Claro (Light Mode) --- */
+  .notebook {
+    background-color: #fdfaf2; /* Un color crema para el papel */
+    /* Eliminamos la línea vertical del background-image */
+    background-image:
+      linear-gradient(#e8e8e8 .05em, transparent .05em); /* Líneas horizontales grises */
+    background-size: 100% 1.2rem; /* El espaciado entre las líneas horizontales */
+    
+    background-position-y: 0.5rem; 
+
+    line-height: 1.2rem !important;
+    color: #3b3b3b;
+    /* Reducimos el padding izquierdo al no tener margen */
+    padding-left: 20px !important; 
+    padding-top: 20px !important;
+    padding-bottom: 20px !important;
+  }
+
+  /* --- Estilos para el Modo Oscuro (Dark Mode) --- */
+  .dark .notebook {
+    background-color: #000000;
+    background-image: linear-gradient(rgba(255, 255, 255, 0.1) .05em, transparent .05em);
+    color: #e2e8f0;
+    padding-left: 20px !important;
+  }
+  
+  /* Estilos para componentes específicos en modo claro */
+  .light .modal-overlay {
+    background-color: rgba(0, 0, 0, 0.3);
+  }
+  
+  .light .card {
+    background-color: #ffffff;
+    border-color: #e5e7eb;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  }
+  
+  .light .input-field {
+    background-color: #ffffff;
+    border-color: #d1d5db;
+    color: #374151;
+  }
+  
+  .light .input-field:focus {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  }
+  
+  /* Estilos para componentes específicos en modo oscuro */
+  .dark .modal-overlay {
+    background-color: rgba(0, 0, 0, 0.5);
+  }
+  
+  .dark .card {
+    background-color: #1f2937;
+    border-color: #374151;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+  }
+  
+  .dark .input-field {
+    background-color: #374151;
+    border-color: #4b5563;
+    color: #f9fafb;
+  }
+  
+  .dark .input-field:focus {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
+  }
+}
+
+.journal-editor, textarea.journal-editor {
+  line-height: 1.5 !important;
+}
