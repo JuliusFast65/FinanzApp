@@ -1,6 +1,7 @@
 // Sistema de categorización de transacciones
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import OpenAI from 'openai';
+import { findUserCategoryPattern } from './userCategoryPatterns';
 
 // Configurar IA
 const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
@@ -222,14 +223,28 @@ Categoría:`;
 };
 
 // Función principal de categorización (híbrida)
-export const categorizeTransaction = async (transaction) => {
+export const categorizeTransaction = async (transaction, userPatterns = null) => {
     console.log('Categorizando transacción:', transaction.description);
     
-    // Paso 1: Intentar con patrones (rápido)
+    // Paso 1: Verificar patrones personalizados del usuario (prioridad máxima)
+    if (userPatterns) {
+        const userPattern = findUserCategoryPattern(userPatterns, transaction.description);
+        if (userPattern) {
+            console.log('Categorizada por patrón del usuario:', userPattern.category);
+            return {
+                category: userPattern.category,
+                confidence: 'user',
+                method: 'user_pattern',
+                patternId: userPattern.id
+            };
+        }
+    }
+    
+    // Paso 2: Intentar con patrones generales (rápido)
     let category = categorizeByPatterns(transaction.description);
     
     if (category) {
-        console.log('Categorizada por patrón:', category);
+        console.log('Categorizada por patrón general:', category);
         return {
             category,
             confidence: 'high',
@@ -237,7 +252,7 @@ export const categorizeTransaction = async (transaction) => {
         };
     }
     
-    // Paso 2: Usar IA para casos complejos
+    // Paso 3: Usar IA para casos complejos
     console.log('Categorizando con IA...');
     category = await categorizeWithAI(transaction);
     
@@ -249,17 +264,18 @@ export const categorizeTransaction = async (transaction) => {
 };
 
 // Función para categorizar múltiples transacciones
-export const categorizeTransactions = async (transactions) => {
+export const categorizeTransactions = async (transactions, userPatterns = null) => {
     const categorizedTransactions = [];
     
     for (const transaction of transactions) {
-        const result = await categorizeTransaction(transaction);
+        const result = await categorizeTransaction(transaction, userPatterns);
         
         categorizedTransactions.push({
             ...transaction,
             category: result.category,
             categoryConfidence: result.confidence,
             categoryMethod: result.method,
+            categoryPatternId: result.patternId || null,
             categoryData: TRANSACTION_CATEGORIES[result.category]
         });
         

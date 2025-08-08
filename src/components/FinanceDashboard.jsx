@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { collection, getDocs, query, orderBy, limit } from 'firebase/firestore';
 import { decryptText } from '../utils/crypto';
+import { getCategoryStats, TRANSACTION_CATEGORIES } from '../utils/transactionCategories';
 import {
     LineChart,
     Line,
@@ -22,6 +23,7 @@ const FinanceDashboard = ({ db, user, appId }) => {
     const { t } = useTranslation();
     const [cards, setCards] = useState([]);
     const [statements, setStatements] = useState([]);
+    const [transactions, setTransactions] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [selectedPeriod, setSelectedPeriod] = useState('month');
 
@@ -81,6 +83,8 @@ const FinanceDashboard = ({ db, user, appId }) => {
             const statementsSnapshot = await getDocs(statementsQuery);
             
             const statementsData = [];
+            const allTransactions = [];
+            
             statementsSnapshot.forEach((doc) => {
                 const statementData = doc.data();
                 statementsData.push({
@@ -98,9 +102,22 @@ const FinanceDashboard = ({ db, user, appId }) => {
                     interest: parseFloat(statementData.interest),
                     analyzedAt: statementData.analyzedAt.toDate()
                 });
+                
+                // Agregar transacciones si existen
+                if (statementData.transactions && Array.isArray(statementData.transactions)) {
+                    statementData.transactions.forEach(transaction => {
+                        allTransactions.push({
+                            ...transaction,
+                            statementId: doc.id,
+                            cardId: statementData.cardId,
+                            statementDate: statementData.statementDate
+                        });
+                    });
+                }
             });
             
             setStatements(statementsData);
+            setTransactions(allTransactions);
         } catch (error) {
             console.error('Error loading dashboard data:', error);
         } finally {
@@ -136,9 +153,60 @@ const FinanceDashboard = ({ db, user, appId }) => {
         };
     };
 
+    // Preparar datos de categorías
+    const prepareCategoryData = () => {
+        // Filtrar solo gastos (cargos) de los últimos 3 meses
+        const threeMonthsAgo = new Date();
+        threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+        
+        const recentTransactions = transactions.filter(transaction => {
+            const transactionDate = new Date(transaction.statementDate);
+            return transactionDate >= threeMonthsAgo && 
+                   transaction.type === 'cargo' && 
+                   transaction.amount > 0;
+        });
+        
+        if (recentTransactions.length === 0) {
+            return null;
+        }
+        
+        const categoryStats = getCategoryStats(recentTransactions);
+        
+        // Preparar datos para gráfico de pastel
+        const categoryPieData = Object.entries(categoryStats.categories)
+            .filter(([_, data]) => data.amount > 0)
+            .map(([categoryKey, data]) => ({
+                name: data.name,
+                value: data.amount,
+                color: data.color,
+                icon: data.icon,
+                count: data.count,
+                percentage: data.percentage
+            }))
+            .sort((a, b) => b.value - a.value)
+            .slice(0, 8); // Top 8 categorías
+        
+        // Preparar datos para gráfico de barras
+        const categoryBarData = categoryPieData.map(item => ({
+            name: item.name,
+            amount: item.value,
+            icon: item.icon,
+            count: item.count
+        }));
+        
+        return {
+            pieData: categoryPieData,
+            barData: categoryBarData,
+            totalAmount: categoryStats.totalAmount,
+            totalTransactions: categoryStats.totalTransactions,
+            stats: categoryStats.categories
+        };
+    };
+
     // Preparar datos para gráficos
     const prepareChartData = () => {
         const metrics = calculateMetrics();
+        const categoryData = prepareCategoryData();
         
         // Datos para gráfico de utilización por tarjeta
         const utilizationData = cards.map(card => ({
@@ -191,7 +259,8 @@ const FinanceDashboard = ({ db, user, appId }) => {
             utilizationData,
             monthlyData,
             pieData,
-            metrics
+            metrics,
+            categoryData
         };
     };
 
@@ -220,7 +289,7 @@ const FinanceDashboard = ({ db, user, appId }) => {
     return (
         <div className="space-y-6">
             {/* Métricas principales */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className={`grid grid-cols-1 md:grid-cols-2 ${chartData.categoryData ? 'lg:grid-cols-3 xl:grid-cols-5' : 'lg:grid-cols-4'} gap-4`}>
                 <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6">
                     <div className="flex items-center">
                         <div className="p-2 bg-green-100 dark:bg-green-900 rounded-lg">
@@ -292,6 +361,30 @@ const FinanceDashboard = ({ db, user, appId }) => {
                         </div>
                     </div>
                 </div>
+
+                {/* Nueva métrica de gastos categorizados */}
+                {chartData.categoryData && (
+                    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6">
+                        <div className="flex items-center">
+                            <div className="p-2 bg-purple-100 dark:bg-purple-900 rounded-lg">
+                                <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
+                                </svg>
+                            </div>
+                            <div className="ml-4">
+                                <p className="text-sm font-medium text-gray-600 dark:text-gray-300">
+                                    Gastos Categorizados
+                                </p>
+                                <p className="text-2xl font-bold text-gray-900 dark:text-white">
+                                    ${chartData.categoryData.totalAmount.toLocaleString()}
+                                </p>
+                                <p className="text-xs text-gray-500 dark:text-gray-400">
+                                    {chartData.categoryData.totalTransactions} transacciones
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
 
             {/* Gráficos */}
@@ -358,6 +451,136 @@ const FinanceDashboard = ({ db, user, appId }) => {
                     </ResponsiveContainer>
                 </div>
             </div>
+
+            {/* Gastos por Categoría */}
+            {chartData.categoryData && (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {/* Gráfico de pastel - Categorías */}
+                    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6">
+                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+                            Gastos por Categoría (Últimos 3 meses)
+                        </h3>
+                        <ResponsiveContainer width="100%" height={300}>
+                            <PieChart>
+                                <Pie
+                                    data={chartData.categoryData.pieData}
+                                    cx="50%"
+                                    cy="50%"
+                                    labelLine={false}
+                                    label={({ name, percentage }) => `${name} ${percentage.toFixed(1)}%`}
+                                    outerRadius={80}
+                                    fill="#8884d8"
+                                    dataKey="value"
+                                >
+                                    {chartData.categoryData.pieData.map((entry, index) => (
+                                        <Cell key={`cell-${index}`} fill={entry.color} />
+                                    ))}
+                                </Pie>
+                                <Tooltip 
+                                    formatter={(value, name, props) => [
+                                        `$${value.toLocaleString()}`,
+                                        `${props.payload.icon} ${name}`
+                                    ]}
+                                />
+                            </PieChart>
+                        </ResponsiveContainer>
+                        <div className="mt-4 text-center">
+                            <p className="text-sm text-gray-600 dark:text-gray-300">
+                                Total: ${chartData.categoryData.totalAmount.toLocaleString()} en {chartData.categoryData.totalTransactions} transacciones
+                            </p>
+                        </div>
+                    </div>
+
+                    {/* Gráfico de barras - Categorías */}
+                    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6">
+                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+                            Top Categorías de Gasto
+                        </h3>
+                        <ResponsiveContainer width="100%" height={300}>
+                            <BarChart data={chartData.categoryData.barData}>
+                                <CartesianGrid strokeDasharray="3 3" />
+                                <XAxis 
+                                    dataKey="name" 
+                                    tick={{ fontSize: 12 }}
+                                    interval={0}
+                                    angle={-45}
+                                    textAnchor="end"
+                                    height={60}
+                                />
+                                <YAxis />
+                                <Tooltip 
+                                    formatter={(value, name, props) => [
+                                        `$${value.toLocaleString()}`,
+                                        `${props.payload.icon} ${name} (${props.payload.count} transacciones)`
+                                    ]}
+                                />
+                                <Bar 
+                                    dataKey="amount" 
+                                    fill="#8884d8"
+                                    radius={[4, 4, 0, 0]}
+                                >
+                                    {chartData.categoryData.barData.map((entry, index) => (
+                                        <Cell key={`cell-${index}`} fill={chartData.categoryData.pieData[index]?.color || '#8884d8'} />
+                                    ))}
+                                </Bar>
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
+            )}
+
+            {/* Lista detallada de categorías */}
+            {chartData.categoryData && (
+                <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6">
+                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+                        Resumen Detallado por Categoría
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {chartData.categoryData.pieData.map((category, index) => (
+                            <div key={index} className="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                                <div className="flex items-center justify-between mb-2">
+                                    <div className="flex items-center space-x-2">
+                                        <span className="text-xl">{category.icon}</span>
+                                        <span className="font-medium text-gray-900 dark:text-white">
+                                            {category.name}
+                                        </span>
+                                    </div>
+                                    <div 
+                                        className="w-4 h-4 rounded-full"
+                                        style={{ backgroundColor: category.color }}
+                                    ></div>
+                                </div>
+                                <div className="space-y-1">
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-gray-600 dark:text-gray-300">Gasto:</span>
+                                        <span className="font-semibold text-gray-900 dark:text-white">
+                                            ${category.value.toLocaleString()}
+                                        </span>
+                                    </div>
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-gray-600 dark:text-gray-300">Transacciones:</span>
+                                        <span className="text-gray-900 dark:text-white">
+                                            {category.count}
+                                        </span>
+                                    </div>
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-gray-600 dark:text-gray-300">Porcentaje:</span>
+                                        <span className="text-gray-900 dark:text-white">
+                                            {category.percentage.toFixed(1)}%
+                                        </span>
+                                    </div>
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-gray-600 dark:text-gray-300">Promedio:</span>
+                                        <span className="text-gray-900 dark:text-white">
+                                            ${(category.value / category.count).toLocaleString()}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             {/* Distribución por banco */}
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6">

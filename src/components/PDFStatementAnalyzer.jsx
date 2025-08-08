@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { collection, addDoc, doc, updateDoc, getDocs } from 'firebase/firestore';
 import { encryptText, decryptText } from '../utils/crypto';
 import { categorizeTransactions } from '../utils/transactionCategories';
+import { loadUserCategoryPatterns } from '../utils/userCategoryPatterns';
+import CategoryCorrectionModal from './CategoryCorrectionModal';
 import * as pdfjsLib from 'pdfjs-dist';
 import OpenAI from 'openai';
 import { GoogleGenerativeAI } from '@google/generative-ai';
@@ -31,14 +33,31 @@ const PDFStatementAnalyzer = ({ db, user, appId, onStatementAnalyzed }) => {
     const [isLoadingCards, setIsLoadingCards] = useState(true);
     const [previewImage, setPreviewImage] = useState(null);
     const [selectedAI, setSelectedAI] = useState('gemini'); // gemini por defecto (más barato)
+    const [userPatterns, setUserPatterns] = useState({});
+    const [correctionModal, setCorrectionModal] = useState({
+        isOpen: false,
+        transaction: null
+    });
     const fileInputRef = useRef(null);
 
-    // Cargar tarjetas del usuario
+    // Cargar tarjetas del usuario y patrones personalizados
     useEffect(() => {
         if (db && user) {
             loadCards();
+            loadUserPatterns();
         }
     }, [db, user]);
+
+    const loadUserPatterns = async () => {
+        try {
+            console.log('Cargando patrones personalizados del usuario...');
+            const patterns = await loadUserCategoryPatterns(db, user.uid, appId);
+            setUserPatterns(patterns);
+            console.log('Patrones cargados:', Object.keys(patterns).length);
+        } catch (error) {
+            console.error('Error cargando patrones del usuario:', error);
+        }
+    };
 
     const loadCards = async () => {
         try {
@@ -92,6 +111,48 @@ const PDFStatementAnalyzer = ({ db, user, appId, onStatementAnalyzed }) => {
         
         if (!foundCard && cardId) {
             console.warn('⚠️ Tarjeta seleccionada no encontrada en la lista de tarjetas');
+        }
+    };
+
+    // Manejar corrección de categoría
+    const handleCategoryCorrection = (transaction) => {
+        setCorrectionModal({
+            isOpen: true,
+            transaction
+        });
+    };
+
+    const handleCorrectionSaved = async (transaction, newCategory) => {
+        try {
+            // Actualizar la transacción en los resultados locales
+            if (analysisResult && analysisResult.transactions) {
+                const { TRANSACTION_CATEGORIES } = await import('../utils/transactionCategories');
+                
+                const updatedTransactions = analysisResult.transactions.map(t => {
+                    if (t.description === transaction.description && t.amount === transaction.amount) {
+                        return {
+                            ...t,
+                            category: newCategory,
+                            categoryConfidence: 'user',
+                            categoryMethod: 'user_pattern',
+                            categoryData: TRANSACTION_CATEGORIES[newCategory]
+                        };
+                    }
+                    return t;
+                });
+
+                setAnalysisResult({
+                    ...analysisResult,
+                    transactions: updatedTransactions
+                });
+            }
+
+            // Recargar patrones del usuario
+            await loadUserPatterns();
+
+            console.log('Corrección guardada y patrones actualizados');
+        } catch (error) {
+            console.error('Error procesando corrección:', error);
         }
     };
 
@@ -401,7 +462,7 @@ INSTRUCCIONES IMPORTANTES:
                 setExtractedText(`🔄 Categorizando ${analysis.transactions.length} transacciones con IA...`);
                 console.log('Categorizando transacciones...');
                 
-                const categorizedTransactions = await categorizeTransactions(analysis.transactions);
+                const categorizedTransactions = await categorizeTransactions(analysis.transactions, userPatterns);
                 analysis.transactions = categorizedTransactions;
                 
                 console.log('Transacciones categorizadas:', categorizedTransactions);
@@ -1022,6 +1083,7 @@ INSTRUCCIONES IMPORTANTES:
                                                     <th className="px-4 py-2 text-right">Monto</th>
                                                     <th className="px-4 py-2 text-center">Categoría</th>
                                                     <th className="px-4 py-2 text-center">Tipo</th>
+                                                    <th className="px-4 py-2 text-center">Acciones</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -1060,6 +1122,17 @@ INSTRUCCIONES IMPORTANTES:
                                                                 {transaction.type}
                                                             </span>
                                                         </td>
+                                                        <td className="px-4 py-2 text-center">
+                                                            {transaction.type === 'cargo' && (
+                                                                <button
+                                                                    onClick={() => handleCategoryCorrection(transaction)}
+                                                                    className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 text-xs px-2 py-1 rounded hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
+                                                                    title="Corregir categoría"
+                                                                >
+                                                                    {transaction.categoryMethod === 'user_pattern' ? '✏️ Editar' : '🤖 Corregir'}
+                                                                </button>
+                                                            )}
+                                                        </td>
                                                     </tr>
                                                 ))}
                                             </tbody>
@@ -1070,6 +1143,17 @@ INSTRUCCIONES IMPORTANTES:
                         )}
                     </div>
                 )}
+
+                {/* Modal de corrección de categoría */}
+                <CategoryCorrectionModal
+                    isOpen={correctionModal.isOpen}
+                    onClose={() => setCorrectionModal({ isOpen: false, transaction: null })}
+                    transaction={correctionModal.transaction}
+                    db={db}
+                    user={user}
+                    appId={appId}
+                    onCorrectionSaved={handleCorrectionSaved}
+                />
             </div>
         </div>
     );
