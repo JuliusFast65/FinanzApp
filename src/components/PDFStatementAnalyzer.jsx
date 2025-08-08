@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { collection, addDoc, doc, updateDoc, getDocs } from 'firebase/firestore';
 import { encryptText, decryptText } from '../utils/crypto';
+import { categorizeTransactions } from '../utils/transactionCategories';
 import * as pdfjsLib from 'pdfjs-dist';
 import OpenAI from 'openai';
 import { GoogleGenerativeAI } from '@google/generative-ai';
@@ -103,21 +104,20 @@ const PDFStatementAnalyzer = ({ db, user, appId, onStatementAnalyzed }) => {
             return;
         }
 
-        if (!selectedCard) {
-            alert('Por favor selecciona una tarjeta de crédito antes de cargar el PDF.');
-            return;
+        // Si no hay tarjeta seleccionada, la crearemos automáticamente después del análisis
+        if (selectedCard) {
+            // Verificar que la tarjeta seleccionada existe en la lista
+            const selectedCardData = cards.find(card => card.id === selectedCard);
+            if (!selectedCardData) {
+                console.error('Tarjeta seleccionada no encontrada:', selectedCard);
+                console.error('Tarjetas disponibles:', cards);
+                alert('Error: La tarjeta seleccionada no es válida. Por favor selecciona otra tarjeta.');
+                return;
+            }
+            console.log('Procesando archivo con tarjeta:', selectedCardData.name);
+        } else {
+            console.log('Sin tarjeta seleccionada - se creará automáticamente desde el PDF');
         }
-
-        // Verificar que la tarjeta seleccionada existe en la lista
-        const selectedCardData = cards.find(card => card.id === selectedCard);
-        if (!selectedCardData) {
-            console.error('Tarjeta seleccionada no encontrada:', selectedCard);
-            console.error('Tarjetas disponibles:', cards);
-            alert('Error: La tarjeta seleccionada no es válida. Por favor selecciona otra tarjeta.');
-            return;
-        }
-
-        console.log('Procesando archivo con tarjeta:', selectedCardData.name);
 
         setIsAnalyzing(true);
         setAnalysisProgress(0);
@@ -394,8 +394,21 @@ INSTRUCCIONES IMPORTANTES:
                 console.log(`${images.length} páginas procesadas. Primera página analizada.`);
             }
             
+            setAnalysisProgress(90);
+            
+            // 5. Categorizar transacciones automáticamente
+            if (analysis.transactions && analysis.transactions.length > 0) {
+                setExtractedText(`🔄 Categorizando ${analysis.transactions.length} transacciones con IA...`);
+                console.log('Categorizando transacciones...');
+                
+                const categorizedTransactions = await categorizeTransactions(analysis.transactions);
+                analysis.transactions = categorizedTransactions;
+                
+                console.log('Transacciones categorizadas:', categorizedTransactions);
+            }
+            
             setAnalysisProgress(100);
-            setExtractedText(`✅ Análisis completado con IA. ${images.length} página(s) procesada(s).`);
+            setExtractedText(`✅ Análisis completado con IA. ${images.length} página(s) procesada(s). ${analysis.transactions?.length || 0} transacciones categorizadas.`);
             
             return analysis;
             
@@ -414,71 +427,26 @@ INSTRUCCIONES IMPORTANTES:
             console.log('cards:', cards.map(c => ({ id: c.id, name: c.name })));
             
             // Buscar la tarjeta seleccionada
-            const selectedCardData = cards.find(card => card.id === selectedCard);
+            let selectedCardData = cards.find(card => card.id === selectedCard);
             console.log('selectedCardData encontrada:', selectedCardData);
             
+            // Si no existe la tarjeta, crearla automáticamente
             if (!selectedCardData) {
-                console.error('❌ No se encontró la tarjeta seleccionada');
-                console.error('selectedCard buscado:', selectedCard);
-                console.error('IDs disponibles:', cards.map(c => c.id));
-                
-                // Intentar encontrar por cualquier método
-                console.log('Buscando tarjeta por otros métodos...');
-                const cardByIndex = cards[0]; // Usar la primera tarjeta como fallback
-                if (cardByIndex) {
-                    console.log('Usando primera tarjeta como fallback:', cardByIndex);
-                    const statementData = {
-                        userId: user.uid,
-                        cardId: cardByIndex.id,
-                        cardName: cardByIndex.name,
-                        fileName: fileInfo?.name || 'estado_cuenta.pdf',
-                        appId,
-                        note: 'Guardado con tarjeta fallback debido a error de sincronización',
-                        
-                        // Campos principales para el Dashboard
-                        statementDate: analysisData.statementDate || new Date().toISOString().split('T')[0],
-                        totalBalance: analysisData.totalBalance || 0,
-                        minimumPayment: analysisData.minimumPayment || 0,
-                        dueDate: analysisData.dueDate || null,
-                        creditLimit: analysisData.creditLimit || 0,
-                        availableCredit: analysisData.availableCredit || 0,
-                        previousBalance: analysisData.previousBalance || 0,
-                        payments: analysisData.payments || 0,
-                        charges: analysisData.charges || 0,
-                        fees: analysisData.fees || 0,
-                        interest: analysisData.interest || 0,
-                        
-                        // Información adicional
-                        bankName: analysisData.bankName || '',
-                        cardHolderName: analysisData.cardHolderName || '',
-                        lastFourDigits: analysisData.lastFourDigits || '',
-                        transactions: analysisData.transactions || [],
-                        
-                        // Metadatos
-                        analyzedAt: new Date(),
-                        createdAt: new Date(),
-                        analysisData: analysisData
-                    };
-
-                    console.log('Guardando con fallback:', statementData);
-                    const statementsRef = collection(db, 'artifacts', appId, 'users', user.uid, 'statements');
-                    await addDoc(statementsRef, statementData);
-                    
-                    // Actualizar la tarjeta fallback también
-                    await updateCardWithStatementData(cardByIndex.id, analysisData);
-                    
-                    alert('⚠️ Estado de cuenta guardado con la primera tarjeta disponible debido a un error de sincronización.');
-                    return;
-                } else {
-                    alert('Error: No se encontraron tarjetas. Agrega una tarjeta primero.');
-                    return;
+                console.log('🔄 Tarjeta no encontrada, creando automáticamente...');
+                selectedCardData = await createCardFromAnalysis(analysisData);
+                if (!selectedCardData) {
+                    throw new Error('No se pudo crear la tarjeta automáticamente');
                 }
             }
+            
+            // Validar si este estado de cuenta es más reciente que el actual
+            const shouldUpdateCard = await shouldUpdateCardData(selectedCardData, analysisData);
+            console.log('¿Debe actualizar tarjeta?', shouldUpdateCard);
 
             // Guardar normalmente con formato compatible con Dashboard
             const statementData = {
                 userId: user.uid,
-                cardId: selectedCard,
+                cardId: selectedCardData.id,
                 cardName: selectedCardData.name,
                 fileName: fileInfo?.name || 'estado_cuenta.pdf',
                 appId,
@@ -515,8 +483,13 @@ INSTRUCCIONES IMPORTANTES:
             
             console.log('✅ Estado de cuenta guardado exitosamente con ID:', docRef.id);
             
-            // Actualizar la tarjeta con los nuevos datos
-            await updateCardWithStatementData(selectedCard, analysisData);
+            // Actualizar la tarjeta con los nuevos datos (solo si es más reciente)
+            if (shouldUpdateCard) {
+                await updateCardWithStatementData(selectedCardData.id, analysisData);
+                console.log('✅ Tarjeta actualizada con datos más recientes');
+            } else {
+                console.log('⏭️ Estado de cuenta anterior - tarjeta no actualizada');
+            }
             
             alert('¡Estado de cuenta analizado y guardado exitosamente!');
             
@@ -532,6 +505,108 @@ INSTRUCCIONES IMPORTANTES:
         } catch (error) {
             console.error('💥 Error al guardar estado de cuenta:', error);
             alert(`Error al guardar: ${error.message}`);
+        }
+    };
+
+    // Crear tarjeta automáticamente desde análisis (Opción A - datos completos)
+    const createCardFromAnalysis = async (analysisData) => {
+        try {
+            console.log('🔄 Creando tarjeta automáticamente desde análisis...');
+            
+            // Construir nombre de tarjeta inteligente
+            const cardName = analysisData.cardHolderName 
+                ? `${analysisData.bankName} - ${analysisData.cardHolderName}`
+                : `${analysisData.bankName} Credit Card`;
+            
+            const newCardData = {
+                name: await encryptText(cardName, user.uid),
+                bank: await encryptText(analysisData.bankName || 'Banco Desconocido', user.uid),
+                cardNumber: await encryptText(`****${analysisData.lastFourDigits || 'xxxx'}`, user.uid),
+                type: 'credit', // Asumir crédito por defecto
+                limit: analysisData.creditLimit || 0,
+                currentBalance: analysisData.totalBalance || 0,
+                color: '#059669', // Verde por defecto
+                dueDate: analysisData.dueDate || null,
+                lastStatementDate: analysisData.statementDate || new Date().toISOString().split('T')[0],
+                createdAt: new Date(),
+                autoCreated: true, // Marcar como creada automáticamente
+                lastUpdated: new Date(),
+                lastAnalyzedAt: new Date()
+            };
+
+            console.log('Datos de nueva tarjeta:', { 
+                cardName, 
+                bank: analysisData.bankName,
+                lastFour: analysisData.lastFourDigits,
+                limit: analysisData.creditLimit,
+                balance: analysisData.totalBalance
+            });
+
+            const cardsRef = collection(db, 'artifacts', appId, 'users', user.uid, 'creditCards');
+            const docRef = await addDoc(cardsRef, newCardData);
+            
+            // Crear objeto para uso local
+            const newCard = {
+                id: docRef.id,
+                name: cardName,
+                bank: analysisData.bankName || 'Banco Desconocido',
+                cardNumber: `****${analysisData.lastFourDigits || 'xxxx'}`,
+                type: 'credit',
+                limit: analysisData.creditLimit || 0,
+                currentBalance: analysisData.totalBalance || 0,
+                color: '#059669',
+                dueDate: analysisData.dueDate || null,
+                lastStatementDate: analysisData.statementDate || new Date().toISOString().split('T')[0],
+                createdAt: new Date(),
+                autoCreated: true
+            };
+
+            // Actualizar el estado local
+            setCards(prevCards => [...prevCards, newCard]);
+            setSelectedCard(docRef.id);
+
+            console.log('✅ Tarjeta creada automáticamente con ID:', docRef.id);
+            return newCard;
+            
+        } catch (error) {
+            console.error('Error al crear tarjeta automáticamente:', error);
+            return null;
+        }
+    };
+
+    // Validar si el estado de cuenta es más reciente que el actual
+    const shouldUpdateCardData = async (cardData, analysisData) => {
+        try {
+            // Si no hay fecha del estado de cuenta, no actualizar
+            if (!analysisData.statementDate) {
+                console.log('⚠️ Sin fecha de estado de cuenta, no actualizando tarjeta');
+                return false;
+            }
+
+            // Si la tarjeta no tiene fecha de último estado, siempre actualizar
+            if (!cardData.lastStatementDate) {
+                console.log('✅ Primera vez - actualizando tarjeta');
+                return true;
+            }
+
+            // Comparar fechas
+            const newStatementDate = new Date(analysisData.statementDate);
+            const lastStatementDate = new Date(cardData.lastStatementDate);
+
+            const isNewer = newStatementDate >= lastStatementDate;
+            
+            console.log('Comparación de fechas:', {
+                nuevaFecha: analysisData.statementDate,
+                fechaActual: cardData.lastStatementDate,
+                esMasReciente: isNewer
+            });
+
+            return isNewer;
+            
+        } catch (error) {
+            console.error('Error al validar fechas:', error);
+            // En caso de error, mejor no actualizar
+            return false;
         }
     };
 
@@ -551,7 +626,9 @@ INSTRUCCIONES IMPORTANTES:
                 
                 // Actualizar fechas importantes
                 ...(analysisData.dueDate && { dueDate: analysisData.dueDate }),
-                ...(analysisData.statementDate && { lastStatementDate: analysisData.statementDate }),
+                
+                // Actualizar fecha del último estado de cuenta procesado
+                lastStatementDate: analysisData.statementDate || new Date().toISOString().split('T')[0],
                 
                 // Metadatos
                 lastUpdated: new Date(),
@@ -656,7 +733,7 @@ INSTRUCCIONES IMPORTANTES:
                             onChange={(e) => handleCardSelect(e.target.value)}
                             className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 dark:bg-gray-700 dark:text-white"
                         >
-                            <option value="">{t('pdfAnalyzer.chooseCard')}</option>
+                            <option value="">Selecciona una tarjeta o déjala vacía para crear automáticamente</option>
                             {cards.map((card) => (
                                 <option key={card.id} value={card.id}>
                                     {card.name} - {card.bank} (****{card.cardNumber.slice(-4)})
@@ -665,9 +742,19 @@ INSTRUCCIONES IMPORTANTES:
                         </select>
                     )}
                     {!isLoadingCards && cards.length === 0 && (
-                        <p className="text-sm text-red-600 mt-1">
-                            {t('pdfAnalyzer.noCardsAvailable')}
-                        </p>
+                        <div className="mt-2 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                            <p className="text-sm text-blue-800 dark:text-blue-200">
+                                💡 <strong>Sin tarjetas registradas:</strong> Al analizar tu PDF, se creará automáticamente una tarjeta con los datos extraídos del estado de cuenta.
+                            </p>
+                        </div>
+                    )}
+                    
+                    {!isLoadingCards && cards.length > 0 && (
+                        <div className="mt-2 p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
+                            <p className="text-sm text-green-800 dark:text-green-200">
+                                ✨ <strong>Creación automática:</strong> Si el PDF es de una tarjeta diferente, se creará automáticamente una nueva tarjeta.
+                            </p>
+                        </div>
                     )}
                 </div>
 
@@ -682,7 +769,7 @@ INSTRUCCIONES IMPORTANTES:
                             type="file"
                             accept=".pdf"
                             onChange={handleFileSelect}
-                            disabled={isAnalyzing || !selectedCard}
+                            disabled={isAnalyzing}
                             className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 dark:bg-gray-700 dark:text-white disabled:opacity-50"
                         />
                         {analysisResult && (
@@ -849,6 +936,76 @@ INSTRUCCIONES IMPORTANTES:
                             </div>
                         </div>
 
+                        {/* Resumen de categorías */}
+                        {analysisResult.transactions && analysisResult.transactions.length > 0 && (() => {
+                            // Calcular estadísticas de categorías
+                            const categoryStats = {};
+                            let totalGastos = 0;
+                            
+                            analysisResult.transactions.forEach(transaction => {
+                                if (transaction.type === 'cargo' && transaction.amount > 0) {
+                                    const category = transaction.category || 'other';
+                                    const categoryData = transaction.categoryData;
+                                    
+                                    if (!categoryStats[category]) {
+                                        categoryStats[category] = {
+                                            ...categoryData,
+                                            amount: 0,
+                                            count: 0
+                                        };
+                                    }
+                                    
+                                    categoryStats[category].amount += transaction.amount;
+                                    categoryStats[category].count++;
+                                    totalGastos += transaction.amount;
+                                }
+                            });
+                            
+                            const sortedCategories = Object.values(categoryStats)
+                                .sort((a, b) => b.amount - a.amount)
+                                .slice(0, 5); // Top 5 categorías
+                            
+                            return sortedCategories.length > 0 && (
+                                <div className="mt-6">
+                                    <h4 className="font-semibold text-gray-900 dark:text-white mb-3">
+                                        Gastos por Categoría
+                                    </h4>
+                                    <div className="bg-white dark:bg-gray-800 rounded-lg p-4">
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                            {sortedCategories.map((category, index) => {
+                                                const percentage = totalGastos > 0 ? (category.amount / totalGastos) * 100 : 0;
+                                                return (
+                                                    <div key={index} className="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-700 rounded">
+                                                        <div className="flex items-center space-x-2">
+                                                            <span className="text-lg">{category.icon}</span>
+                                                            <span className="text-sm font-medium">{category.name}</span>
+                                                            <span className="text-xs text-gray-500">({category.count})</span>
+                                                        </div>
+                                                        <div className="text-right">
+                                                            <div className="text-sm font-semibold">
+                                                                ${category.amount.toLocaleString()}
+                                                            </div>
+                                                            <div className="text-xs text-gray-500">
+                                                                {percentage.toFixed(1)}%
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                        {totalGastos > 0 && (
+                                            <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-600">
+                                                <div className="flex justify-between text-sm font-semibold">
+                                                    <span>Total Gastos:</span>
+                                                    <span>${totalGastos.toLocaleString()}</span>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            );
+                        })()}
+
                         {/* Transacciones */}
                         {analysisResult.transactions && analysisResult.transactions.length > 0 && (
                             <div className="mt-6">
@@ -863,6 +1020,7 @@ INSTRUCCIONES IMPORTANTES:
                                                     <th className="px-4 py-2 text-left">Fecha</th>
                                                     <th className="px-4 py-2 text-left">Descripción</th>
                                                     <th className="px-4 py-2 text-right">Monto</th>
+                                                    <th className="px-4 py-2 text-center">Categoría</th>
                                                     <th className="px-4 py-2 text-center">Tipo</th>
                                                 </tr>
                                             </thead>
@@ -870,9 +1028,26 @@ INSTRUCCIONES IMPORTANTES:
                                                 {analysisResult.transactions.map((transaction, index) => (
                                                     <tr key={index} className="border-t dark:border-gray-600">
                                                         <td className="px-4 py-2">{transaction.date}</td>
-                                                        <td className="px-4 py-2">{transaction.description}</td>
+                                                        <td className="px-4 py-2 truncate max-w-32" title={transaction.description}>
+                                                            {transaction.description}
+                                                        </td>
                                                         <td className="px-4 py-2 text-right">
                                                             ${transaction.amount?.toLocaleString()}
+                                                        </td>
+                                                        <td className="px-4 py-2 text-center">
+                                                            {transaction.categoryData ? (
+                                                                <span 
+                                                                    className="px-2 py-1 rounded text-xs text-white"
+                                                                    style={{ backgroundColor: transaction.categoryData.color }}
+                                                                    title={`${transaction.categoryData.name} (${transaction.categoryMethod})`}
+                                                                >
+                                                                    {transaction.categoryData.icon} {transaction.categoryData.name}
+                                                                </span>
+                                                            ) : (
+                                                                <span className="px-2 py-1 rounded text-xs bg-gray-100 text-gray-800">
+                                                                    ❓ Sin categoría
+                                                                </span>
+                                                            )}
                                                         </td>
                                                         <td className="px-4 py-2 text-center">
                                                             <span className={`px-2 py-1 rounded text-xs ${
