@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { collection, getDocs, query, orderBy, deleteDoc, doc } from 'firebase/firestore';
+import { collection, getDocs, query, orderBy, deleteDoc, doc, updateDoc } from 'firebase/firestore';
 import { decryptText } from '../utils/crypto';
+import { loadUserCategoryPatterns, saveUserCategoryPattern } from '../utils/userCategoryPatterns';
+import { TRANSACTION_CATEGORIES } from '../utils/transactionCategories';
+import CategoryCorrectionModal from './CategoryCorrectionModal';
 
 const StatementsView = ({ db, user, appId }) => {
     const { t } = useTranslation();
@@ -10,6 +13,11 @@ const StatementsView = ({ db, user, appId }) => {
     const [isLoading, setIsLoading] = useState(true);
     const [selectedStatement, setSelectedStatement] = useState(null);
     const [filterCard, setFilterCard] = useState('');
+    const [correctionModal, setCorrectionModal] = useState({
+        isOpen: false,
+        transaction: null,
+        statementId: null
+    });
 
     useEffect(() => {
         if (db && user) {
@@ -84,6 +92,78 @@ const StatementsView = ({ db, user, appId }) => {
         } catch (error) {
             console.error('Error al eliminar estado de cuenta:', error);
             alert('Error al eliminar estado de cuenta');
+        }
+    };
+
+    // Manejar corrección de categoría en estados pasados
+    const handleCategoryCorrection = (transaction, statementId) => {
+        setCorrectionModal({
+            isOpen: true,
+            transaction,
+            statementId
+        });
+    };
+
+    const handleCorrectionSaved = async (transaction, newCategory) => {
+        try {
+            const statementId = correctionModal.statementId;
+            
+            // 1. Guardar patrón personalizado para futuras categorizaciones
+            await saveUserCategoryPattern(
+                db, 
+                user.uid, 
+                appId, 
+                transaction.description, 
+                newCategory, 
+                'user'
+            );
+
+            // 2. Actualizar la transacción en el estado de cuenta en Firestore
+            const statement = statements.find(s => s.id === statementId);
+            if (statement && statement.transactions) {
+                const updatedTransactions = statement.transactions.map(t => {
+                    if (t.description === transaction.description && t.amount === transaction.amount && t.date === transaction.date) {
+                        return {
+                            ...t,
+                            category: newCategory,
+                            categoryConfidence: 'user',
+                            categoryMethod: 'user_pattern',
+                            categoryData: TRANSACTION_CATEGORIES[newCategory]
+                        };
+                    }
+                    return t;
+                });
+
+                // Actualizar en Firestore
+                const statementRef = doc(db, 'artifacts', appId, 'users', user.uid, 'statements', statementId);
+                await updateDoc(statementRef, {
+                    transactions: updatedTransactions,
+                    lastUpdated: new Date()
+                });
+
+                // 3. Actualizar el estado local
+                setStatements(prevStatements => 
+                    prevStatements.map(s => 
+                        s.id === statementId 
+                            ? { ...s, transactions: updatedTransactions, lastUpdated: new Date() }
+                            : s
+                    )
+                );
+
+                // Actualizar selectedStatement si es el que está siendo visto
+                if (selectedStatement && selectedStatement.id === statementId) {
+                    setSelectedStatement({ 
+                        ...selectedStatement, 
+                        transactions: updatedTransactions,
+                        lastUpdated: new Date()
+                    });
+                }
+            }
+
+            console.log('Corrección guardada para estado de cuenta pasado');
+        } catch (error) {
+            console.error('Error procesando corrección:', error);
+            alert('Error al guardar la corrección. Inténtalo de nuevo.');
         }
     };
 
@@ -318,15 +398,45 @@ const StatementsView = ({ db, user, appId }) => {
                                                         <th className="px-2 py-1 text-left">Fecha</th>
                                                         <th className="px-2 py-1 text-left">Descripción</th>
                                                         <th className="px-2 py-1 text-right">Monto</th>
+                                                        <th className="px-2 py-1 text-center">Categoría</th>
+                                                        <th className="px-2 py-1 text-center">Acciones</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody>
                                                     {selectedStatement.transactions.map((transaction, index) => (
                                                         <tr key={index} className="border-t dark:border-gray-600">
                                                             <td className="px-2 py-1">{transaction.date}</td>
-                                                            <td className="px-2 py-1 truncate">{transaction.description}</td>
+                                                            <td className="px-2 py-1 truncate max-w-24" title={transaction.description}>
+                                                                {transaction.description}
+                                                            </td>
                                                             <td className="px-2 py-1 text-right">
                                                                 ${transaction.amount?.toLocaleString()}
+                                                            </td>
+                                                            <td className="px-2 py-1 text-center">
+                                                                {transaction.categoryData ? (
+                                                                    <span 
+                                                                        className="px-1 py-0.5 rounded text-xs text-white"
+                                                                        style={{ backgroundColor: transaction.categoryData.color }}
+                                                                        title={`${transaction.categoryData.name} (${transaction.categoryMethod})`}
+                                                                    >
+                                                                        {transaction.categoryData.icon} {transaction.categoryData.name}
+                                                                    </span>
+                                                                ) : (
+                                                                    <span className="px-1 py-0.5 rounded text-xs bg-gray-100 text-gray-800">
+                                                                        ❓ Sin categoría
+                                                                    </span>
+                                                                )}
+                                                            </td>
+                                                            <td className="px-2 py-1 text-center">
+                                                                {transaction.type === 'cargo' && (
+                                                                    <button
+                                                                        onClick={() => handleCategoryCorrection(transaction, selectedStatement.id)}
+                                                                        className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 text-xs px-1 py-0.5 rounded hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
+                                                                        title="Corregir categoría"
+                                                                    >
+                                                                        {transaction.categoryMethod === 'user_pattern' ? '✏️' : '🤖'}
+                                                                    </button>
+                                                                )}
                                                             </td>
                                                         </tr>
                                                     ))}
@@ -346,6 +456,17 @@ const StatementsView = ({ db, user, appId }) => {
                     )}
                 </div>
             </div>
+
+            {/* Modal de corrección de categoría */}
+            <CategoryCorrectionModal
+                isOpen={correctionModal.isOpen}
+                onClose={() => setCorrectionModal({ isOpen: false, transaction: null, statementId: null })}
+                transaction={correctionModal.transaction}
+                db={db}
+                user={user}
+                appId={appId}
+                onCorrectionSaved={handleCorrectionSaved}
+            />
         </div>
     );
 };

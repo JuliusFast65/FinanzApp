@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { collection, addDoc, doc, updateDoc, getDocs } from 'firebase/firestore';
 import { encryptText, decryptText } from '../utils/crypto';
@@ -21,7 +21,7 @@ const openai = new OpenAI({
 // Configurar Gemini
 const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
 
-const PDFStatementAnalyzer = ({ db, user, appId, onStatementAnalyzed }) => {
+const PDFStatementAnalyzer = ({ db, user, appId, onStatementAnalyzed, onNavigateToDashboard }) => {
     const { t } = useTranslation();
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [analysisProgress, setAnalysisProgress] = useState(0);
@@ -38,17 +38,17 @@ const PDFStatementAnalyzer = ({ db, user, appId, onStatementAnalyzed }) => {
         isOpen: false,
         transaction: null
     });
+    const [notification, setNotification] = useState({
+        show: false,
+        type: 'success', // 'success', 'error', 'info'
+        title: '',
+        message: ''
+    });
     const fileInputRef = useRef(null);
 
-    // Cargar tarjetas del usuario y patrones personalizados
-    useEffect(() => {
-        if (db && user) {
-            loadCards();
-            loadUserPatterns();
-        }
-    }, [db, user]);
+    // MOVED: useEffect se movió al final después de definir todas las funciones
 
-    const loadUserPatterns = async () => {
+    const loadUserPatterns = useCallback(async () => {
         try {
             console.log('Cargando patrones personalizados del usuario...');
             const patterns = await loadUserCategoryPatterns(db, user.uid, appId);
@@ -57,9 +57,9 @@ const PDFStatementAnalyzer = ({ db, user, appId, onStatementAnalyzed }) => {
         } catch (error) {
             console.error('Error cargando patrones del usuario:', error);
         }
-    };
+    }, [db, user, appId]);
 
-    const loadCards = async () => {
+    const loadCards = useCallback(async () => {
         try {
             setIsLoadingCards(true);
             console.log('Cargando tarjetas...');
@@ -94,11 +94,16 @@ const PDFStatementAnalyzer = ({ db, user, appId, onStatementAnalyzed }) => {
             
         } catch (error) {
             console.error('Error al cargar tarjetas:', error);
-            alert('Error al cargar las tarjetas. Revisa la consola para más detalles.');
+            showNotification(
+                'error',
+                '❌ Error al Cargar Tarjetas',
+                'No se pudieron cargar las tarjetas. Revisa la consola para más detalles.',
+                8000
+            );
         } finally {
             setIsLoadingCards(false);
         }
-    };
+    }, [db, user, appId]);
 
     const handleCardSelect = (cardId) => {
         console.log('Seleccionando tarjeta:', cardId);
@@ -111,6 +116,24 @@ const PDFStatementAnalyzer = ({ db, user, appId, onStatementAnalyzed }) => {
         
         if (!foundCard && cardId) {
             console.warn('⚠️ Tarjeta seleccionada no encontrada en la lista de tarjetas');
+        }
+    };
+
+    // Función para mostrar notificaciones
+    const showNotification = (type, title, message, duration = 5000, action = null) => {
+        setNotification({
+            show: true,
+            type,
+            title,
+            message,
+            action
+        });
+
+        // Auto-ocultar después del tiempo especificado (solo si no hay acción o es automático)
+        if (!action || action.autoHide !== false) {
+            setTimeout(() => {
+                setNotification(prev => ({ ...prev, show: false }));
+            }, duration);
         }
     };
 
@@ -150,18 +173,39 @@ const PDFStatementAnalyzer = ({ db, user, appId, onStatementAnalyzed }) => {
             // Recargar patrones del usuario
             await loadUserPatterns();
 
+            // Mostrar notificación de corrección guardada
+            showNotification(
+                'success',
+                '✅ Categoría Corregida',
+                `La transacción "${transaction.description}" ahora se categorizará como "${require('../utils/transactionCategories').TRANSACTION_CATEGORIES[newCategory]?.name}" en el futuro.`,
+                6000
+            );
+
             console.log('Corrección guardada y patrones actualizados');
         } catch (error) {
             console.error('Error procesando corrección:', error);
         }
     };
 
+    // Cargar tarjetas del usuario y patrones personalizados (movido aquí al final)
+    useEffect(() => {
+        if (db && user && appId) {
+            loadCards();
+            loadUserPatterns();
+        }
+    }, [db, user, appId, loadCards, loadUserPatterns]);
+
     const handleFileSelect = async (event) => {
         const file = event.target.files[0];
         if (!file) return;
 
         if (file.type !== 'application/pdf') {
-            alert('Por favor selecciona un archivo PDF válido.');
+            showNotification(
+                'error',
+                '📄 Archivo Inválido',
+                'Por favor selecciona un archivo PDF válido.',
+                5000
+            );
             return;
         }
 
@@ -172,7 +216,12 @@ const PDFStatementAnalyzer = ({ db, user, appId, onStatementAnalyzed }) => {
             if (!selectedCardData) {
                 console.error('Tarjeta seleccionada no encontrada:', selectedCard);
                 console.error('Tarjetas disponibles:', cards);
-                alert('Error: La tarjeta seleccionada no es válida. Por favor selecciona otra tarjeta.');
+                showNotification(
+                    'error',
+                    '❌ Tarjeta Inválida',
+                    'La tarjeta seleccionada no es válida. Por favor selecciona otra tarjeta.',
+                    6000
+                );
                 return;
             }
             console.log('Procesando archivo con tarjeta:', selectedCardData.name);
@@ -204,7 +253,12 @@ const PDFStatementAnalyzer = ({ db, user, appId, onStatementAnalyzed }) => {
             }
         } catch (error) {
             console.error('Error al analizar PDF:', error);
-            alert('Error al analizar el PDF. Por favor intenta nuevamente.');
+            showNotification(
+                'error',
+                '❌ Error de Análisis',
+                'No se pudo analizar el PDF. Verifica que sea un estado de cuenta válido e intenta nuevamente.',
+                8000
+            );
         } finally {
             setIsAnalyzing(false);
         }
@@ -552,7 +606,22 @@ INSTRUCCIONES IMPORTANTES:
                 console.log('⏭️ Estado de cuenta anterior - tarjeta no actualizada');
             }
             
-            alert('¡Estado de cuenta analizado y guardado exitosamente!');
+            showNotification(
+                'success',
+                '✅ ¡Análisis Completado!',
+                `Estado de cuenta analizado y guardado exitosamente. ${analysisData.transactions?.length || 0} transacciones categorizadas. Revisa y corrige las categorías si es necesario.`,
+                15000, // 15 segundos o hasta que el usuario interactúe
+                {
+                    label: '📊 Ir al Dashboard',
+                    onClick: () => {
+                        setNotification(prev => ({ ...prev, show: false }));
+                        if (onNavigateToDashboard) {
+                            onNavigateToDashboard();
+                        }
+                    },
+                    autoHide: false // No auto-ocultar para dar tiempo a revisar
+                }
+            );
             
             // Notificar al padre para que recargue los datos
             if (onStatementAnalyzed) {
@@ -565,7 +634,12 @@ INSTRUCCIONES IMPORTANTES:
             
         } catch (error) {
             console.error('💥 Error al guardar estado de cuenta:', error);
-            alert(`Error al guardar: ${error.message}`);
+            showNotification(
+                'error',
+                '❌ Error al Guardar',
+                `No se pudo guardar el estado de cuenta: ${error.message}`,
+                10000
+            );
         }
     };
 
@@ -1154,6 +1228,86 @@ INSTRUCCIONES IMPORTANTES:
                     appId={appId}
                     onCorrectionSaved={handleCorrectionSaved}
                 />
+
+                {/* Notificación no intrusiva */}
+                {notification.show && (
+                    <div className="fixed top-4 right-4 z-50 max-w-md">
+                        <div className={`rounded-lg shadow-lg p-4 ${
+                            notification.type === 'success' 
+                                ? 'bg-green-50 border border-green-200' 
+                                : notification.type === 'error'
+                                ? 'bg-red-50 border border-red-200'
+                                : 'bg-blue-50 border border-blue-200'
+                        } transform transition-all duration-300 ease-in-out`}>
+                            <div className="flex items-start">
+                                <div className="flex-shrink-0">
+                                    {notification.type === 'success' && (
+                                        <svg className="h-5 w-5 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                                        </svg>
+                                    )}
+                                    {notification.type === 'error' && (
+                                        <svg className="h-5 w-5 text-red-400" fill="currentColor" viewBox="0 0 20 20">
+                                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                                        </svg>
+                                    )}
+                                </div>
+                                <div className="ml-3 flex-1">
+                                    <h3 className={`text-sm font-medium ${
+                                        notification.type === 'success' 
+                                            ? 'text-green-800' 
+                                            : notification.type === 'error'
+                                            ? 'text-red-800'
+                                            : 'text-blue-800'
+                                    }`}>
+                                        {notification.title}
+                                    </h3>
+                                    <p className={`mt-1 text-sm ${
+                                        notification.type === 'success' 
+                                            ? 'text-green-700' 
+                                            : notification.type === 'error'
+                                            ? 'text-red-700'
+                                            : 'text-blue-700'
+                                    }`}>
+                                        {notification.message}
+                                    </p>
+                                    {notification.action && (
+                                        <div className="mt-3">
+                                            <button
+                                                onClick={notification.action.onClick}
+                                                className={`inline-flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                                                    notification.type === 'success'
+                                                        ? 'bg-green-100 text-green-800 hover:bg-green-200'
+                                                        : notification.type === 'error'
+                                                        ? 'bg-red-100 text-red-800 hover:bg-red-200'
+                                                        : 'bg-blue-100 text-blue-800 hover:bg-blue-200'
+                                                }`}
+                                            >
+                                                {notification.action.label}
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="ml-4 flex-shrink-0">
+                                    <button
+                                        onClick={() => setNotification(prev => ({ ...prev, show: false }))}
+                                        className={`rounded-md inline-flex ${
+                                            notification.type === 'success' 
+                                                ? 'text-green-400 hover:text-green-500' 
+                                                : notification.type === 'error'
+                                                ? 'text-red-400 hover:text-red-500'
+                                                : 'text-blue-400 hover:text-blue-500'
+                                        } focus:outline-none`}
+                                    >
+                                        <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
+                                            <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                                        </svg>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     );

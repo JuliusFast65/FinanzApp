@@ -69,9 +69,9 @@ const FinanceApp = ({ user }) => {
     const handleStatementAnalyzed = (result) => {
         // Recargar datos del dashboard cuando se analiza un nuevo estado de cuenta
         console.log('Nuevo estado de cuenta analizado:', result);
-        // Cambiar al dashboard para mostrar los datos actualizados
-        setCurrentView('dashboard');
-        // El dashboard se actualizará automáticamente cuando se monte
+        // NO cambiar automáticamente al dashboard - permitir que el usuario revise y corrija categorías
+        // setCurrentView('dashboard'); // Comentado para permitir correcciones inmediatas
+        // El dashboard se actualizará automáticamente cuando el usuario navegue manualmente
     };
 
     const renderView = () => {
@@ -81,7 +81,13 @@ const FinanceApp = ({ user }) => {
             case 'cards':
                 return <CreditCardManager db={db} user={user} appId={appId} />;
             case 'analyzer':
-                return <PDFStatementAnalyzer db={db} user={user} appId={appId} onStatementAnalyzed={handleStatementAnalyzed} />;
+                return <PDFStatementAnalyzer 
+                    db={db} 
+                    user={user} 
+                    appId={appId} 
+                    onStatementAnalyzed={handleStatementAnalyzed}
+                    onNavigateToDashboard={() => setCurrentView('dashboard')}
+                />;
             case 'statements':
                 return <StatementsView db={db} user={user} appId={appId} />;
             default:
