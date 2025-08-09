@@ -1,11 +1,24 @@
 <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
     <circle cx="32" cy="32" r="32" fill="url(#icon-gradient)"/>
-    <path d="M28.17 17.26a4.48 4.48 0 0 0-6.34 0l-1.9 1.9a4.48 4.48 0 0 0 0 6.34l12.67 12.67a1.5 1.5 0 0 0 2.12 0l4.24-4.24a1.5 1.5 0 0 0 0-2.12L28.17 17.26z" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M30.29 38.48L25.5 43.27m9.9-9.9l-1.42 1.42" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- Dollar sign symbol -->
+    <path d="M32 14v4" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+    <path d="M32 46v4" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+    <path d="M24 22c0-4.42 3.58-8 8-8s8 3.58 8 8-3.58 8-8 8h-8" 
+          stroke="#ffffff" 
+          stroke-width="3" 
+          stroke-linecap="round" 
+          stroke-linejoin="round" 
+          fill="none"/>
+    <path d="M24 34h8c4.42 0 8 3.58 8 8s-3.58 8-8 8-8-3.58-8-8" 
+          stroke="#ffffff" 
+          stroke-width="3" 
+          stroke-linecap="round" 
+          stroke-linejoin="round" 
+          fill="none"/>
     <defs>
         <linearGradient id="icon-gradient" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
-            <stop stop-color="#4F46E5"/>
-            <stop offset="1" stop-color="#A855F7"/>
+            <stop stop-color="#059669"/>
+            <stop offset="1" stop-color="#10B981"/>
         </linearGradient>
     </defs>
 </svg>

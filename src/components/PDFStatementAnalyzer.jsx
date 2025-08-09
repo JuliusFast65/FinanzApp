@@ -860,16 +860,44 @@ INSTRUCCIONES IMPORTANTES:
                 // Combinar transacciones de todas las páginas
                 if (additionalTransactions.length > 0) {
                     console.log(`🔄 Combinando ${additionalTransactions.length} transacciones adicionales con ${analysis.transactions?.length || 0} de la primera página`);
+                    
+                    // Log detallado de todas las transacciones antes de combinar
+                    console.log('📄 Transacciones de la primera página:');
+                    (analysis.transactions || []).forEach((t, i) => {
+                        console.log(`  ${i + 1}. ${t.description?.substring(0, 30)}... | ${t.amount} | ${t.type}`);
+                    });
+                    
+                    console.log('📄 Transacciones adicionales de otras páginas:');
+                    additionalTransactions.forEach((t, i) => {
+                        console.log(`  ${i + 1}. ${t.description?.substring(0, 30)}... | ${t.amount} | ${t.type}`);
+                    });
+                    
                     analysis.transactions = [...(analysis.transactions || []), ...additionalTransactions];
                     
                     // Eliminar duplicados basados en fecha y descripción
+                    const beforeDedup = analysis.transactions.length;
                     analysis.transactions = analysis.transactions.filter((transaction, index, self) => 
                         index === self.findIndex(t => 
                             t.date === transaction.date && t.description === transaction.description && t.amount === transaction.amount
                         )
                     );
                     
-                    console.log(`✅ Total de transacciones después de combinar y deduplicar: ${analysis.transactions.length}`);
+                    console.log(`✅ Total de transacciones después de combinar y deduplicar: ${analysis.transactions.length} (antes: ${beforeDedup})`);
+                    
+                    // Log detallado de pagos detectados específicamente
+                    const paymentTransactions = analysis.transactions.filter(t => {
+                        const amount = parseFloat(t.amount) || 0;
+                        const description = (t.description || '').toLowerCase();
+                        return (t.type === 'pago' || t.type === 'payment' || t.type === 'abono') ||
+                               (description.includes('pago') || description.includes('abono') || description.includes('payment')) ||
+                               amount < 0;
+                    });
+                    
+                    console.log(`💳 PAGOS DETECTADOS POR LA IA (${paymentTransactions.length}):`);
+                    paymentTransactions.forEach((payment, index) => {
+                        const amount = parseFloat(payment.amount) || 0;
+                        console.log(`  ${index + 1}. ${payment.description?.substring(0, 40)}... → ${amount} | Tipo: ${payment.type}`);
+                    });
                 }
             }
             
@@ -898,7 +926,7 @@ INSTRUCCIONES IMPORTANTES:
         }
     };
 
-    const saveStatementData = async (analysisData) => {
+    const saveStatementData = async (analysisData, skipCardValidation = false) => {
         try {
             console.log('🚀 === INICIANDO GUARDADO DE ESTADO DE CUENTA ===');
             console.log('📥 Datos recibidos para guardar:', analysisData);
@@ -910,14 +938,17 @@ INSTRUCCIONES IMPORTANTES:
             let selectedCardData = cards.find(card => card.id === selectedCard);
             console.log('selectedCardData encontrada:', selectedCardData);
             
-            // Si no existe la tarjeta, usar lógica inteligente para detectar duplicados
-            if (!selectedCardData) {
+            // Si no existe la tarjeta y no estamos omitiendo validación, usar lógica inteligente para detectar duplicados
+            if (!selectedCardData && !skipCardValidation) {
                 console.log('🔄 Tarjeta no encontrada, analizando duplicados...');
                 selectedCardData = await handleMissingCard(analysisData);
                 if (!selectedCardData) {
                     // Pausar el guardado hasta que el usuario confirme
                     return { pending: true, message: 'Esperando confirmación del usuario para crear tarjeta' };
                 }
+            } else if (!selectedCardData && skipCardValidation) {
+                console.error('❌ Error crítico: skipCardValidation=true pero no hay tarjeta seleccionada');
+                throw new Error('Tarjeta no encontrada después de confirmación del usuario');
             }
             
             // Validar si este estado de cuenta es más reciente que el actual
@@ -1346,6 +1377,15 @@ INSTRUCCIONES IMPORTANTES:
             if (!pendingAnalysis) return;
 
             console.log('✅ Usuario confirmó crear nueva tarjeta');
+            
+            // Cerrar modal inmediatamente
+            setCardCreationModal({
+                isOpen: false,
+                suggestions: null,
+                analysisData: null,
+                pendingAnalysis: null
+            });
+            
             const newCard = await createCardFromAnalysis(pendingAnalysis);
             
             if (newCard) {
@@ -1355,7 +1395,7 @@ INSTRUCCIONES IMPORTANTES:
                 // Continuar con el guardado del statement
                 setSelectedCard(newCard.id);
                 setTimeout(async () => {
-                    await saveStatementData(pendingAnalysis);
+                    await saveStatementData(pendingAnalysis, true); // Skip card validation
                 }, 100);
                 
                 showNotification(
@@ -1384,12 +1424,20 @@ INSTRUCCIONES IMPORTANTES:
 
             console.log('🔗 Usuario eligió vincular con tarjeta existente:', existingCard.name);
             
+            // Cerrar modal inmediatamente
+            setCardCreationModal({
+                isOpen: false,
+                suggestions: null,
+                analysisData: null,
+                pendingAnalysis: null
+            });
+            
             // Usar la tarjeta existente
             setSelectedCard(existingCard.id);
             
             // Continuar con el guardado del statement
             setTimeout(async () => {
-                await saveStatementData(pendingAnalysis);
+                await saveStatementData(pendingAnalysis, true); // Skip card validation
             }, 100);
             
             showNotification(

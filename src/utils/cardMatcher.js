@@ -10,7 +10,12 @@
 export const findPotentialDuplicates = (existingCards, analysisData) => {
     console.log('🔍 findPotentialDuplicates iniciado');
     console.log('📋 Tarjetas recibidas:', existingCards?.length || 0);
-    console.log('📄 Datos de análisis recibidos:', analysisData);
+    console.log('📄 Datos de análisis recibidos:', {
+        bankName: analysisData?.bankName,
+        lastFourDigits: analysisData?.lastFourDigits,
+        cardHolderName: analysisData?.cardHolderName,
+        creditLimit: analysisData?.creditLimit
+    });
     
     if (!existingCards || !Array.isArray(existingCards) || existingCards.length === 0) {
         console.log('⚠️ No hay tarjetas existentes para comparar');
@@ -92,22 +97,49 @@ const normalizeCardData = (data) => {
         return {};
     }
 
+    // Intentar múltiples fuentes para el banco
+    let bankName = data.bankName || data.bank || data.issuer || '';
+    
+    // Si no hay banco en los campos directos, intentar extraer del nombre de la tarjeta
+    if (!bankName && data.name) {
+        // Extraer banco del nombre de la tarjeta (ej: "Banco XYZ - Visa")
+        const bankMatch = data.name.match(/^([^-]+)/);
+        if (bankMatch) {
+            bankName = bankMatch[1].trim();
+        }
+    }
+    
+    // Intentar múltiples fuentes para los últimos 4 dígitos
+    let lastFourDigits = data.lastFourDigits || data.cardNumber || data.number || '';
+    
+    // Si no hay en campos directos, intentar extraer del nombre
+    if (!lastFourDigits && data.name) {
+        const numberMatch = data.name.match(/(\d{4})/);
+        if (numberMatch) {
+            lastFourDigits = numberMatch[1];
+        }
+    }
+
     const normalized = {
-        bank: normalizeString(data.bankName || data.bank || ''),
-        lastFour: extractLastFour(data.lastFourDigits || data.cardNumber || ''),
-        holderName: normalizeString(data.cardHolderName || data.holderName || ''),
-        limit: parseFloat(data.creditLimit || data.limit || 0),
-        type: normalizeString(data.type || 'credit')
+        bank: normalizeString(bankName),
+        lastFour: extractLastFour(lastFourDigits),
+        holderName: normalizeString(data.cardHolderName || data.holderName || data.holder || ''),
+        limit: parseFloat(data.creditLimit || data.limit || data.creditLimit || 0),
+        type: normalizeString(data.type || data.cardType || 'credit')
     };
 
     console.log('🔧 Datos normalizados:', {
         original: {
+            name: data.name,
             bankName: data.bankName,
             bank: data.bank,
+            issuer: data.issuer,
             lastFourDigits: data.lastFourDigits,
             cardNumber: data.cardNumber,
+            number: data.number,
             cardHolderName: data.cardHolderName,
             holderName: data.holderName,
+            holder: data.holder,
             creditLimit: data.creditLimit,
             limit: data.limit
         },

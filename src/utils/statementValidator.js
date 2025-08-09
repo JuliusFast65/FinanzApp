@@ -58,29 +58,35 @@ export const validateStatement = (statementData) => {
         if (effectivePreviousBalance !== undefined && effectivePreviousBalance !== null && 
             totalBalance !== undefined && totalBalance !== null) {
             
-            const normalizedPreviousBalance = Math.abs(effectivePreviousBalance);
-            const normalizedTotalBalance = Math.abs(totalBalance);
+            // Para la fórmula de saldo, preservar signos originales
+            // En tarjetas de crédito: positivo = deuda, negativo = saldo a favor
+            const previousBalance = parseFloat(effectivePreviousBalance) || 0;
+            const totalBalance = parseFloat(totalBalance) || 0;
             
-            // Fórmula: Saldo Anterior + Cargos - Pagos = Saldo Actual
-            const expectedBalance = normalizedPreviousBalance + calculatedTotals.totalCharges - calculatedTotals.totalPayments;
-            const balanceDifference = Math.abs(normalizedTotalBalance - expectedBalance);
+            // Fórmula correcta: Saldo Anterior + Cargos - Pagos = Saldo Actual
+            // - Saldo anterior: mantener signo original (+ deuda, - saldo a favor)
+            // - Cargos: siempre positivos (aumentan deuda)
+            // - Pagos: siempre positivos (reducen deuda)
+            const expectedBalance = previousBalance + calculatedTotals.totalCharges - calculatedTotals.totalPayments;
+            const balanceDifference = Math.abs(totalBalance - expectedBalance);
 
             console.log('🧮 Validación 1 - Fórmula de saldo:', {
-                previousBalance: normalizedPreviousBalance,
+                previousBalance: previousBalance,
                 totalCharges: calculatedTotals.totalCharges,
                 totalPayments: calculatedTotals.totalPayments,
-                expectedBalance,
-                actualBalance: normalizedTotalBalance,
-                difference: balanceDifference
+                expectedBalance: expectedBalance,
+                actualBalance: totalBalance,
+                difference: balanceDifference,
+                formula: `${previousBalance} + ${calculatedTotals.totalCharges} - ${calculatedTotals.totalPayments} = ${expectedBalance}`
             });
 
             // Caso especial: Si todo es 0, está perfecto (tarjeta sin actividad/pagada)
-            if (normalizedPreviousBalance === 0 && normalizedTotalBalance === 0 && 
+            if (previousBalance === 0 && totalBalance === 0 && 
                 calculatedTotals.totalCharges === 0 && calculatedTotals.totalPayments === 0) {
                 console.log('✅ Validación 1 OK - Tarjeta sin actividad (0+0-0=0)');
             } else {
-                // Tolerancia: hasta $10 o 1% del saldo
-                const tolerance = Math.max(10, normalizedTotalBalance * 0.01);
+                // Tolerancia: hasta $10 o 1% del saldo absoluto
+                const tolerance = Math.max(10, Math.abs(totalBalance) * 0.01);
                 
                 if (balanceDifference <= tolerance) {
                     console.log('✅ Validación 1 OK - Fórmula de saldo correcta');
@@ -88,10 +94,10 @@ export const validateStatement = (statementData) => {
                     validation.warnings.push({
                         type: 'balance_formula_mismatch',
                         field: 'totalBalance',
-                        message: `Fórmula de saldo no cuadra: Saldo anterior ($${normalizedPreviousBalance.toLocaleString()}) + Cargos ($${calculatedTotals.totalCharges.toLocaleString()}) - Pagos ($${calculatedTotals.totalPayments.toLocaleString()}) = $${expectedBalance.toLocaleString()}, pero el saldo reportado es $${normalizedTotalBalance.toLocaleString()}`,
+                        message: `Fórmula de saldo no cuadra: Saldo anterior ($${previousBalance.toLocaleString()}) + Cargos ($${calculatedTotals.totalCharges.toLocaleString()}) - Pagos ($${calculatedTotals.totalPayments.toLocaleString()}) = $${expectedBalance.toLocaleString()}, pero el saldo reportado es $${totalBalance.toLocaleString()}`,
                         severity: 'high',
                         expected: expectedBalance,
-                        actual: normalizedTotalBalance,
+                        actual: totalBalance,
                         difference: balanceDifference,
                         tolerance: tolerance
                     });
@@ -362,14 +368,16 @@ const calculateTotalsFromTransactions = (transactions) => {
             // Para pagos, usar valor absoluto (convertir -319.45 a 319.45)
             totals.totalPayments += normalizedAmount;
             
-            console.log(`💳 Pago detectado: ${normalizedAmount} (original: ${amount})`);
+            console.log(`💳 Pago detectado #${index + 1}: ${normalizedAmount} (original: ${amount})`);
+            console.log(`💰 Total de pagos acumulado hasta ahora: ${totals.totalPayments}`);
         } else {
             // Transacción no clasificada - intentar clasificar por monto
             console.log(`❓ Transacción no clasificada, usando heurística por monto`);
             if (amount < 0) {
                 // Monto negativo probablemente es un pago
                 totals.totalPayments += normalizedAmount;
-                console.log(`💳 Clasificado como pago por monto negativo: ${normalizedAmount}`);
+                console.log(`💳 Clasificado como pago por monto negativo #${index + 1}: ${normalizedAmount} (original: ${amount})`);
+                console.log(`💰 Total de pagos acumulado hasta ahora: ${totals.totalPayments}`);
             } else {
                 // Monto positivo probablemente es un cargo
                 totals.totalCharges += normalizedAmount;
@@ -378,7 +386,25 @@ const calculateTotalsFromTransactions = (transactions) => {
         }
     });
 
+    // Resumen final con desglose de pagos
+    const paymentTransactions = transactions.filter(t => {
+        const amount = parseFloat(t.amount) || 0;
+        const description = (t.description || '').toLowerCase();
+        const detectedType = t.type;
+        
+        return (detectedType === 'pago' || detectedType === 'payment' || detectedType === 'abono') ||
+               (description.includes('pago') || description.includes('abono') || description.includes('payment')) ||
+               (amount < 0 && !detectedType?.includes('cargo'));
+    });
+    
     console.log('📊 Totales calculados:', totals);
+    console.log(`💳 Resumen de pagos encontrados (${paymentTransactions.length}):`);
+    paymentTransactions.forEach((payment, index) => {
+        const amount = parseFloat(payment.amount) || 0;
+        console.log(`  ${index + 1}. ${payment.description?.substring(0, 40)}... → ${Math.abs(amount)} (original: ${amount})`);
+    });
+    console.log(`💰 Total de pagos sumado: ${totals.totalPayments}`);
+    
     return totals;
 };
 
