@@ -39,7 +39,6 @@ const StatementsView = ({ db, user, appId }) => {
             const cardsData = [];
             for (const doc of querySnapshot.docs) {
                 const data = doc.data();
-                console.log(`🔍 Loading card ${doc.id}:`, data);
                 
                 try {
                     const decryptedCard = {
@@ -48,10 +47,9 @@ const StatementsView = ({ db, user, appId }) => {
                         bank: await decryptText(data.bank, user.uid),
                         cardNumber: data.cardNumber ? await decryptText(data.cardNumber, user.uid) : '',
                     };
-                    console.log(`✅ Card ${doc.id} decrypted:`, decryptedCard);
                     cardsData.push(decryptedCard);
                 } catch (decryptError) {
-                    console.error(`❌ Error decrypting card ${doc.id}:`, decryptError);
+                    console.error(`Error decrypting card ${doc.id}:`, decryptError);
                     // Fallback con datos parciales
                     cardsData.push({
                         id: doc.id,
@@ -62,7 +60,6 @@ const StatementsView = ({ db, user, appId }) => {
                 }
             }
             
-            console.log('🎯 All cards loaded:', cardsData);
             setCards(cardsData);
         } catch (error) {
             console.error('Error cargando tarjetas:', error);
@@ -101,15 +98,29 @@ const StatementsView = ({ db, user, appId }) => {
                 const data = doc.data();
                 console.log('📄 Documento statement:', doc.id, data);
                 
-                // Desencriptar transacciones si existen
+                // Desencriptar transacciones si existen (manejar casos encriptados y no encriptados)
                 let transactions = [];
                 if (data.transactions && Array.isArray(data.transactions)) {
                     transactions = await Promise.all(
-                        data.transactions.map(async (transaction) => ({
-                            ...transaction,
-                            description: await decryptText(transaction.description, user.uid),
-                            categoryData: transaction.category ? TRANSACTION_CATEGORIES[transaction.category] : null
-                        }))
+                        data.transactions.map(async (transaction) => {
+                            try {
+                                // Intentar desencriptar, si falla usar el texto plano
+                                const description = await decryptText(transaction.description, user.uid);
+                                return {
+                                    ...transaction,
+                                    description: description,
+                                    categoryData: transaction.category ? TRANSACTION_CATEGORIES[transaction.category] : null
+                                };
+                            } catch (error) {
+                                // Si no se puede desencriptar, usar el texto plano (para datos antiguos)
+                                console.log('Usando descripción sin encriptar para transacción:', transaction.description);
+                                return {
+                                    ...transaction,
+                                    description: transaction.description,
+                                    categoryData: transaction.category ? TRANSACTION_CATEGORIES[transaction.category] : null
+                                };
+                            }
+                        })
                     );
                 }
                 
@@ -246,26 +257,12 @@ const StatementsView = ({ db, user, appId }) => {
     };
 
     const filteredStatements = useMemo(() => {
-        console.log(`📊 Filter Debug:
-            - Total statements: ${statements.length}
-            - Filter card ID: ${filterCard}
-            - Available cards: ${cards.map(c => `${c.id}:${c.name}`).join(', ')}
-        `);
-        
         if (!filterCard) {
-            console.log('✅ No filter applied, returning all statements');
             return statements;
         }
         
-        const filtered = statements.filter(s => {
-            const matches = s.cardId === filterCard;
-            console.log(`Statement ${s.id}: cardId="${s.cardId}", filterCard="${filterCard}", matches=${matches}`);
-            return matches;
-        });
-        
-        console.log(`✅ Filter applied, ${filtered.length} statements match`);
-        return filtered;
-    }, [statements, filterCard, cards]);
+        return statements.filter(s => s.cardId === filterCard);
+    }, [statements, filterCard]);
 
     const getCardName = (cardId) => {
         const card = cards.find(c => c.id === cardId);

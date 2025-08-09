@@ -4,8 +4,12 @@ import { collection, addDoc, doc, updateDoc, getDocs } from 'firebase/firestore'
 import { encryptText, decryptText } from '../utils/crypto';
 import { categorizeTransactions } from '../utils/transactionCategories';
 import { loadUserCategoryPatterns } from '../utils/userCategoryPatterns';
+import { validateStatement, formatValidationResult, getConfidenceScore } from '../utils/statementValidator';
+import { parseAIResponse, parseStatementResponse, parseTransactionsResponse, logParsingError } from '../utils/jsonParser';
+import { findPotentialDuplicates, generateCardSuggestions, isSafeToAutoCreate } from '../utils/cardMatcher';
 import { loadUserSettings } from '../utils/userSettings';
 import CategoryCorrectionModal from './CategoryCorrectionModal';
+import CardCreationModal from './CardCreationModal';
 import * as pdfjsLib from 'pdfjs-dist';
 import OpenAI from 'openai';
 import { GoogleGenerativeAI } from '@google/generative-ai';
@@ -46,6 +50,14 @@ const PDFStatementAnalyzer = ({ db, user, appId, onStatementAnalyzed, onNavigate
         isOpen: false,
         transaction: null
     });
+    const [cardCreationModal, setCardCreationModal] = useState({
+        isOpen: false,
+        suggestions: null,
+        analysisData: null,
+        pendingAnalysis: null
+    });
+    const [validationResult, setValidationResult] = useState(null);
+    const [showValidation, setShowValidation] = useState(false);
     const [notification, setNotification] = useState({
         show: false,
         type: 'success', // 'success', 'error', 'info'
@@ -268,10 +280,53 @@ const PDFStatementAnalyzer = ({ db, user, appId, onStatementAnalyzed, onNavigate
 
         try {
             const result = await analyzePDF(file);
-            setAnalysisResult(result);
+            console.log('🔍 [DEBUG] Resultado crudo de analyzePDF:', {
+                previousBalance: result?.previousBalance,
+                totalBalance: result?.totalBalance,
+                minimumPayment: result?.minimumPayment,
+                transactionsCount: result?.transactions?.length || 0,
+                fullResult: result
+            });
             
-            if (result && Object.keys(result).length > 0) {
-                console.log('🎯 Análisis exitoso, procediendo a guardar:', result);
+            // Completar datos faltantes antes de mostrar y validar
+            const enrichedResult = await enrichAnalysisResult(result);
+            console.log('🔍 [DEBUG] Resultado después de enriquecimiento:', {
+                previousBalance: enrichedResult?.previousBalance,
+                totalBalance: enrichedResult?.totalBalance,
+                minimumPayment: enrichedResult?.minimumPayment,
+                transactionsCount: enrichedResult?.transactions?.length || 0
+            });
+            setAnalysisResult(enrichedResult);
+            
+            if (enrichedResult && Object.keys(enrichedResult).length > 0) {
+                console.log('🎯 Análisis exitoso, procediendo a validar:', enrichedResult);
+                
+                // Debug: verificar qué campos tiene el result para la validación
+                console.log('🔍 Campos disponibles para validación:', {
+                    totalBalance: enrichedResult.totalBalance,
+                    previousBalance: enrichedResult.previousBalance,
+                    minimumPayment: enrichedResult.minimumPayment,
+                    dueDate: enrichedResult.dueDate,
+                    statementDate: enrichedResult.statementDate,
+                    transactions: enrichedResult.transactions?.length || 0
+                });
+                
+                // Validar la consistencia de los datos extraídos
+                const validation = validateStatement(enrichedResult);
+                const formattedValidation = formatValidationResult(validation);
+                const confidenceScore = getConfidenceScore(validation);
+                
+                console.log('🔍 Resultado de validación:', validation);
+                console.log('📊 Puntuación de confianza:', confidenceScore);
+                
+                setValidationResult({
+                    ...formattedValidation,
+                    confidenceScore,
+                    rawValidation: validation
+                });
+                setShowValidation(true);
+                
+                console.log('💾 Procediendo a guardar:', result);
                 await saveStatementData(result);
                 console.log('💾 saveStatementData completado');
                 
@@ -328,7 +383,9 @@ const PDFStatementAnalyzer = ({ db, user, appId, onStatementAnalyzed, onNavigate
                     const images = [];
                     
                     // Convertir cada página a imagen (empezando por la primera)
-                    for (let i = 1; i <= Math.min(pdf.numPages, 2); i++) { // Máximo 2 páginas
+                    // Procesar más páginas para capturar todas las transacciones
+                    const maxPages = Math.min(pdf.numPages, 5); // Máximo 5 páginas para evitar problemas de rendimiento
+                    for (let i = 1; i <= maxPages; i++) {
                         const page = await pdf.getPage(i);
                         const viewport = page.getViewport({ scale: 2.0 }); // Alta resolución
                         
@@ -356,7 +413,7 @@ const PDFStatementAnalyzer = ({ db, user, appId, onStatementAnalyzed, onNavigate
                             setPreviewImage(imageData);
                         }
                         
-                        setAnalysisProgress(20 + (i / Math.min(pdf.numPages, 2)) * 30);
+                        setAnalysisProgress(20 + (i / maxPages) * 30);
                         console.log(`Página ${i} convertida a imagen`);
                     }
                     
@@ -378,68 +435,35 @@ const PDFStatementAnalyzer = ({ db, user, appId, onStatementAnalyzed, onNavigate
 
     // Función auxiliar para parsing JSON robusto
     const parseAIResponse = (content) => {
-        console.log('🔍 Respuesta cruda de IA:', content);
-        
-        // Limpiar el contenido
-        let cleanContent = content.trim();
-        
-        // Remover bloques de código markdown
-        if (cleanContent.startsWith('```json')) {
-            cleanContent = cleanContent.replace(/```json\s*/, '').replace(/```\s*$/, '');
-        }
-        if (cleanContent.startsWith('```')) {
-            cleanContent = cleanContent.replace(/```\s*/, '').replace(/```\s*$/, '');
-        }
-        
-        // Remover texto antes del JSON
-        const jsonStart = cleanContent.indexOf('{');
-        if (jsonStart > 0) {
-            cleanContent = cleanContent.substring(jsonStart);
-        }
-        
-        // Encontrar el último } para cerrar el JSON
-        const lastBrace = cleanContent.lastIndexOf('}');
-        if (lastBrace > 0) {
-            cleanContent = cleanContent.substring(0, lastBrace + 1);
-        }
-        
-        console.log('🧹 JSON limpio:', cleanContent.substring(0, 200) + '...');
-        
         try {
-            const parsed = JSON.parse(cleanContent);
-            console.log('✅ JSON parseado exitosamente');
-            return parsed;
-        } catch (firstError) {
-            console.warn('⚠️ Primer intento falló:', firstError.message);
+            console.log('🔍 Usando parser robusto para statement...');
+            const result = parseStatementResponse(content);
             
-            // Intento de reparación automática
-            try {
-                // Agregar comillas faltantes y cerrar estructuras
-                let repairedContent = cleanContent;
-                
-                // Si termina con coma, quitar la coma final
-                repairedContent = repairedContent.replace(/,\s*$/, '');
-                
-                // Si no termina con }, agregarlo
-                if (!repairedContent.trim().endsWith('}')) {
-                    repairedContent += '}';
-                }
-                
-                // Intentar parsear la versión reparada
-                const repaired = JSON.parse(repairedContent);
-                console.log('🔧 JSON reparado exitosamente');
-                return repaired;
-                
-            } catch (secondError) {
-                console.error('❌ No se pudo reparar el JSON:', secondError.message);
-                
-                // Como último recurso, devolver estructura básica
-                return {
-                    error: 'JSON_PARSE_ERROR',
-                    rawContent: cleanContent.substring(0, 500),
-                    message: 'La IA devolvió JSON inválido, usa los campos básicos detectados'
-                };
+            console.log('🔍 [DEBUG] Resultado del parser:', {
+                previousBalance: result?.previousBalance,
+                totalBalance: result?.totalBalance,
+                minimumPayment: result?.minimumPayment,
+                hasError: !!result?.error,
+                transactionsCount: result?.transactions?.length || 0
+            });
+            
+            // Si el resultado tiene error, usar el parsing tradicional como fallback
+            if (result && result.error) {
+                console.warn('⚠️ Parser robusto reportó error, intentando fallback');
+                logParsingError(new Error(result.error), content, 'Statement Analysis');
             }
+            
+            return result;
+        } catch (error) {
+            console.error('💥 Error crítico en parsing:', error);
+            logParsingError(error, content, 'Critical Parsing Error');
+            
+            // Retornar estructura mínima válida
+            return {
+                error: 'CRITICAL_PARSE_ERROR',
+                message: 'Error crítico en parsing de JSON',
+                rawContent: content?.substring(0, 500)
+            };
         }
     };
 
@@ -519,6 +543,157 @@ INSTRUCCIONES:
             throw error;
         }
     };
+
+    // Analizar página adicional solo para transacciones
+    const analyzePageForTransactions = async (imageData, pageNumber) => {
+        try {
+            console.log(`🔍 Analizando página ${pageNumber} para transacciones...`);
+            
+            // Usar la IA seleccionada para extraer solo transacciones
+            const transactions = selectedAI === 'gemini'
+                ? await analyzePageTransactionsWithGemini(imageData, pageNumber)
+                : await analyzePageTransactionsWithAI(imageData, pageNumber);
+                
+            return transactions || [];
+        } catch (error) {
+            console.error(`Error analizando página ${pageNumber} para transacciones:`, error);
+            return [];
+        }
+    };
+
+    // Analizar página con Gemini solo para transacciones
+    const analyzePageTransactionsWithGemini = async (imageData, pageNumber) => {
+        try {
+            if (!genAI) {
+                throw new Error('Gemini API no está configurada');
+            }
+            
+            const base64Data = imageData.split(',')[1];
+            const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+            
+            const prompt = `Analiza esta página ${pageNumber} de un estado de cuenta de tarjeta de crédito y extrae SOLO las transacciones en formato JSON estricto:
+
+[
+  {
+    "date": "YYYY-MM-DD",
+    "description": "descripción_transacción",
+    "amount": número_decimal,
+    "type": "cargo|pago|ajuste"
+  }
+]
+
+INSTRUCCIONES:
+- Devuelve SOLO el array JSON de transacciones, sin texto adicional
+- NO incluyas resúmenes, saldos o información general, SOLO transacciones individuales
+- Si no hay transacciones en esta página, devuelve un array vacío: []
+- Para montos usa números decimales sin símbolos
+- Las fechas en formato YYYY-MM-DD
+- Busca movimientos, compras, pagos, cargos, etc.`;
+
+            const imagePart = {
+                inlineData: {
+                    data: base64Data,
+                    mimeType: "image/png"
+                }
+            };
+
+            const result = await model.generateContent([prompt, imagePart]);
+            const response = await result.response;
+            const content = response.text();
+            
+            console.log(`Respuesta Gemini página ${pageNumber}:`, content);
+            const transactions = parseTransactionsResponseLocal(content);
+            console.log(`Transacciones extraídas página ${pageNumber}:`, transactions);
+            
+            return transactions;
+        } catch (error) {
+            console.error(`Error con Gemini página ${pageNumber}:`, error);
+            return [];
+        }
+    };
+
+    // Analizar página con OpenAI solo para transacciones
+    const analyzePageTransactionsWithAI = async (imageData, pageNumber) => {
+        try {
+            if (!openai) {
+                throw new Error('OpenAI API no está configurada');
+            }
+            
+            const response = await openai.chat.completions.create({
+                model: "gpt-4o",
+                messages: [
+                    {
+                        role: "user",
+                        content: [
+                            {
+                                type: "text",
+                                text: `Analiza esta página ${pageNumber} de un estado de cuenta de tarjeta de crédito y extrae SOLO las transacciones en formato JSON estricto:
+
+[
+  {
+    "date": "YYYY-MM-DD",
+    "description": "descripción_transacción",
+    "amount": número_decimal,
+    "type": "cargo|pago|ajuste"
+  }
+]
+
+INSTRUCCIONES:
+- Devuelve SOLO el array JSON de transacciones, sin texto adicional
+- NO incluyas resúmenes, saldos o información general, SOLO transacciones individuales
+- Si no hay transacciones en esta página, devuelve un array vacío: []
+- Para montos usa números decimales (ej: 1234.56)
+- Las fechas en formato YYYY-MM-DD
+- Los montos negativos indican pagos/créditos
+- Busca movimientos, compras, pagos, cargos, etc.`
+                            },
+                            {
+                                type: "image_url",
+                                image_url: {
+                                    url: imageData
+                                }
+                            }
+                        ]
+                    }
+                ],
+                max_tokens: 1500,
+                temperature: 0.1
+            });
+
+            const content = response.choices[0].message.content;
+            console.log(`Respuesta OpenAI página ${pageNumber}:`, content);
+            
+            const transactions = parseTransactionsResponseLocal(content);
+            console.log(`Transacciones extraídas página ${pageNumber}:`, transactions);
+            
+            return transactions;
+        } catch (error) {
+            console.error(`Error con OpenAI página ${pageNumber}:`, error);
+            return [];
+        }
+    };
+
+    // Parsear respuesta de transacciones usando utilidad robusta
+    const parseTransactionsResponseLocal = (content) => {
+        try {
+            console.log('💳 Usando parser robusto para transacciones...');
+            const transactions = parseTransactionsResponse(content);
+            
+            if (!Array.isArray(transactions)) {
+                console.warn('⚠️ Parser no devolvió array, usando array vacío');
+                return [];
+            }
+            
+            console.log(`✅ ${transactions.length} transacciones parseadas exitosamente`);
+            return transactions;
+        } catch (error) {
+            console.error('💥 Error crítico parseando transacciones:', error);
+            logParsingError(error, content, 'Transactions Parsing');
+            return [];
+        }
+    };
+
+
 
     // Analizar imagen con OpenAI Vision API
     const analyzeImageWithAI = async (imageData) => {
@@ -612,22 +787,93 @@ INSTRUCCIONES IMPORTANTES:
             const images = await convertPDFToImages(file);
             setAnalysisProgress(50);
             
-            // 2. Analizar la primera página (generalmente contiene la información principal)
+            // 2. Analizar la primera página (contiene información general y algunas transacciones)
             const mainPageImage = images[0];
-            setExtractedText(`Imagen de ${images.length} página(s) generada. Analizando con IA...`);
+            setExtractedText(`Imagen de ${images.length} página(s) generada. Analizando página 1 con IA...`);
             
             // 3. Analizar con la IA seleccionada
-            const analysis = selectedAI === 'gemini' 
-                ? await analyzeImageWithGemini(mainPageImage.data)
-                : await analyzeImageWithAI(mainPageImage.data);
-            setAnalysisProgress(90);
-            
-            // 4. Si hay múltiples páginas, podrían contener más transacciones
-            if (images.length > 1) {
-                console.log(`${images.length} páginas procesadas. Primera página analizada.`);
+            // Analizar con la IA seleccionada con manejo robusto de errores
+            let analysis;
+            try {
+                analysis = selectedAI === 'gemini' 
+                    ? await analyzeImageWithGemini(mainPageImage.data)
+                    : await analyzeImageWithAI(mainPageImage.data);
+                
+                // Validar que el análisis tiene estructura mínima
+                if (!analysis || typeof analysis !== 'object') {
+                    throw new Error('IA devolvió respuesta vacía o inválida');
+                }
+                
+                console.log('✅ Análisis de página principal completado');
+            } catch (analysisError) {
+                console.error('💥 Error en análisis principal:', analysisError);
+                
+                // Crear estructura mínima válida como fallback
+                analysis = {
+                    error: 'ANALYSIS_ERROR',
+                    message: `Error en análisis: ${analysisError.message}`,
+                    totalBalance: null,
+                    transactions: []
+                };
+                
+                // Mostrar notificación al usuario
+                showNotification(
+                    'error',
+                    '⚠️ Error de Análisis',
+                    'La IA tuvo problemas analizando el PDF. Los datos pueden estar incompletos.',
+                    8000
+                );
             }
             
-            setAnalysisProgress(90);
+            console.log('📄 Análisis página 1 completado:', analysis);
+            setAnalysisProgress(60);
+            
+            // 4. Si hay múltiples páginas, analizar páginas adicionales para más transacciones
+            if (images.length > 1) {
+                console.log(`📚 Procesando ${images.length} páginas. Analizando páginas adicionales para más transacciones...`);
+                setExtractedText(`📚 Analizando ${images.length - 1} página(s) adicional(es) para más transacciones...`);
+                
+                const additionalTransactions = [];
+                
+                // Analizar páginas 2 en adelante solo para transacciones
+                for (let i = 1; i < images.length; i++) {
+                    const pageNum = i + 1;
+                    console.log(`🔍 Analizando página ${pageNum} para transacciones...`);
+                    setExtractedText(`🔍 Analizando página ${pageNum} de ${images.length} para transacciones...`);
+                    
+                    try {
+                        const pageTransactions = await analyzePageForTransactions(images[i].data, pageNum);
+                        if (pageTransactions && pageTransactions.length > 0) {
+                            console.log(`✅ Página ${pageNum}: ${pageTransactions.length} transacciones encontradas`);
+                            additionalTransactions.push(...pageTransactions);
+                        } else {
+                            console.log(`⚪ Página ${pageNum}: No se encontraron transacciones`);
+                        }
+                    } catch (pageError) {
+                        console.error(`❌ Error analizando página ${pageNum}:`, pageError);
+                        // Continuar con las siguientes páginas
+                    }
+                    
+                    setAnalysisProgress(60 + ((i + 1) / images.length) * 25);
+                }
+                
+                // Combinar transacciones de todas las páginas
+                if (additionalTransactions.length > 0) {
+                    console.log(`🔄 Combinando ${additionalTransactions.length} transacciones adicionales con ${analysis.transactions?.length || 0} de la primera página`);
+                    analysis.transactions = [...(analysis.transactions || []), ...additionalTransactions];
+                    
+                    // Eliminar duplicados basados en fecha y descripción
+                    analysis.transactions = analysis.transactions.filter((transaction, index, self) => 
+                        index === self.findIndex(t => 
+                            t.date === transaction.date && t.description === transaction.description && t.amount === transaction.amount
+                        )
+                    );
+                    
+                    console.log(`✅ Total de transacciones después de combinar y deduplicar: ${analysis.transactions.length}`);
+                }
+            }
+            
+            setAnalysisProgress(85);
             
             // 5. Categorizar transacciones automáticamente
             if (analysis.transactions && analysis.transactions.length > 0) {
@@ -664,12 +910,13 @@ INSTRUCCIONES IMPORTANTES:
             let selectedCardData = cards.find(card => card.id === selectedCard);
             console.log('selectedCardData encontrada:', selectedCardData);
             
-            // Si no existe la tarjeta, crearla automáticamente
+            // Si no existe la tarjeta, usar lógica inteligente para detectar duplicados
             if (!selectedCardData) {
-                console.log('🔄 Tarjeta no encontrada, creando automáticamente...');
-                selectedCardData = await createCardFromAnalysis(analysisData);
+                console.log('🔄 Tarjeta no encontrada, analizando duplicados...');
+                selectedCardData = await handleMissingCard(analysisData);
                 if (!selectedCardData) {
-                    throw new Error('No se pudo crear la tarjeta automáticamente');
+                    // Pausar el guardado hasta que el usuario confirme
+                    return { pending: true, message: 'Esperando confirmación del usuario para crear tarjeta' };
                 }
             }
             
@@ -702,7 +949,7 @@ INSTRUCCIONES IMPORTANTES:
                 bankName: analysisData.bankName || '',
                 cardHolderName: analysisData.cardHolderName || '',
                 lastFourDigits: analysisData.lastFourDigits || '',
-                transactions: analysisData.transactions || [],
+                transactions: [], // Se llenará después con datos encriptados
                 
                 // Metadatos
                 analyzedAt: new Date(),
@@ -710,20 +957,32 @@ INSTRUCCIONES IMPORTANTES:
                 analysisData: analysisData // Mantener datos originales para referencia
             };
 
+            // Encriptar transacciones antes de guardar
+            if (analysisData.transactions && Array.isArray(analysisData.transactions)) {
+                console.log('🔐 Encriptando transacciones...');
+                const encryptedTransactions = await Promise.all(
+                    analysisData.transactions.map(async (transaction) => ({
+                        ...transaction,
+                        description: await encryptText(transaction.description || '', user.uid)
+                    }))
+                );
+                statementData.transactions = encryptedTransactions;
+                console.log('✅ Transacciones encriptadas:', encryptedTransactions.length);
+            }
+
             console.log('Datos finales a guardar:', statementData);
 
-            const statementsPath = `artifacts/${appId}/users/${user.uid}/statements`;
-            console.log('💾 Guardando en path:', statementsPath);
+            console.log('💾 Guardando en path: artifacts/${appId}/users/${user.uid}/statements');
             
-            const statementsRef = collection(db, statementsPath);
+            const statementsRef = collection(db, 'artifacts', appId, 'users', user.uid, 'statements');
             const docRef = await addDoc(statementsRef, statementData);
             
             console.log('✅ Estado de cuenta guardado exitosamente con ID:', docRef.id);
-            console.log('✅ Path completo guardado:', `${statementsPath}/${docRef.id}`);
+            console.log('✅ Path completo guardado:', `artifacts/${appId}/users/${user.uid}/statements/${docRef.id}`);
             
             // Verificación inmediata de que se guardó
             try {
-                const verifyRef = collection(db, statementsPath);
+                const verifyRef = collection(db, 'artifacts', appId, 'users', user.uid, 'statements');
                 const verifySnapshot = await getDocs(verifyRef);
                 console.log('🔍 Verificación inmediata - Documentos en statements:', verifySnapshot.size);
             } catch (verifyError) {
@@ -773,6 +1032,78 @@ INSTRUCCIONES IMPORTANTES:
                 10000
             );
         }
+    };
+
+    // Manejar tarjeta faltante con lógica inteligente de duplicados
+    const handleMissingCard = async (analysisData) => {
+        console.log('🔍 Iniciando análisis inteligente de duplicados...');
+        
+        // Verificar si las tarjetas están aún cargándose
+        if (isLoadingCards) {
+            console.log('⏳ Las tarjetas aún se están cargando, esperando...');
+            // Esperar a que terminen de cargar
+            let attempts = 0;
+            while (isLoadingCards && attempts < 10) {
+                await new Promise(resolve => setTimeout(resolve, 500));
+                attempts++;
+                console.log(`⏳ Esperando carga de tarjetas... intento ${attempts}/10`);
+            }
+            
+            if (isLoadingCards) {
+                console.error('❌ Timeout esperando carga de tarjetas');
+                showNotification(
+                    'error',
+                    '❌ Error',
+                    'No se pudieron cargar las tarjetas existentes',
+                    5000
+                );
+                return null;
+            }
+        }
+        
+        console.log('📋 Tarjetas disponibles para comparar:', cards.length);
+        console.log('📋 Lista de tarjetas:', cards.map(c => ({ 
+            id: c.id, 
+            name: c.name, 
+            bank: c.bank, 
+            cardNumber: c.cardNumber 
+        })));
+        console.log('📄 Datos del análisis para comparar:', {
+            bankName: analysisData.bankName,
+            lastFourDigits: analysisData.lastFourDigits,
+            cardHolderName: analysisData.cardHolderName,
+            creditLimit: analysisData.creditLimit
+        });
+        
+        // Buscar duplicados potenciales
+        const duplicateAnalysis = findPotentialDuplicates(cards, analysisData);
+        const suggestions = generateCardSuggestions(duplicateAnalysis);
+        
+        console.log('📊 Análisis de duplicados:', duplicateAnalysis);
+        console.log('💡 Sugerencias generadas:', suggestions);
+        
+        // Si es seguro crear automáticamente, hacerlo sin confirmación
+        if (isSafeToAutoCreate(duplicateAnalysis, analysisData)) {
+            console.log('✅ Es seguro crear automáticamente');
+            showNotification(
+                'info',
+                '🤖 Creando Tarjeta Automáticamente',
+                'No se encontraron tarjetas similares. Creando nueva tarjeta...',
+                3000
+            );
+            return await createCardFromAnalysis(analysisData);
+        }
+        
+        // Si no es seguro, mostrar modal de confirmación
+        console.log('⚠️ Requiere confirmación del usuario');
+        setCardCreationModal({
+            isOpen: true,
+            suggestions,
+            analysisData,
+            pendingAnalysis: analysisData
+        });
+        
+        return null; // Pausar hasta que el usuario confirme
     };
 
     // Crear tarjeta automáticamente desde análisis (Opción A - datos completos)
@@ -913,14 +1244,168 @@ INSTRUCCIONES IMPORTANTES:
         }
     };
 
+    // Función para enriquecer el resultado del análisis con datos faltantes
+    const enrichAnalysisResult = async (result) => {
+        console.log('🔧 Enriqueciendo resultado del análisis...');
+        
+        if (!result) return result;
+        
+        const enriched = { ...result };
+        
+        // Si no hay saldo anterior pero sí hay transacciones, intentar extraerlo
+        if ((enriched.previousBalance === undefined || enriched.previousBalance === null) && 
+            enriched.transactions && enriched.transactions.length > 0) {
+            
+            console.log('🔍 Saldo anterior faltante, buscando en transacciones...');
+            const extractedPreviousBalance = findPreviousBalanceInTransactions(enriched.transactions);
+            
+            if (extractedPreviousBalance !== null) {
+                enriched.previousBalance = extractedPreviousBalance;
+                console.log('✅ Saldo anterior extraído de transacciones:', extractedPreviousBalance);
+            }
+        }
+        
+        console.log('📊 Resultado enriquecido:', {
+            originalPreviousBalance: result.previousBalance,
+            enrichedPreviousBalance: enriched.previousBalance,
+            totalBalance: enriched.totalBalance,
+            transactionsCount: enriched.transactions?.length || 0
+        });
+        
+        return enriched;
+    };
+
+    // Función para buscar saldo anterior en transacciones (misma lógica del validador)
+    const findPreviousBalanceInTransactions = (transactions) => {
+        console.log('🔍 [UI] Buscando saldo anterior en transacciones...');
+        
+        for (let i = 0; i < Math.min(transactions.length, 5); i++) {
+            const transaction = transactions[i];
+            const description = (transaction.description || '').toLowerCase();
+            
+            console.log(`📄 [UI] Transacción ${i + 1}:`, {
+                description: transaction.description?.substring(0, 50) + '...',
+                amount: transaction.amount,
+                type: transaction.type
+            });
+            
+            // Buscar patrones que indiquen saldo anterior
+            if (description.includes('saldo anterior') || 
+                description.includes('balance anterior') || 
+                description.includes('saldo previo') ||
+                description.includes('previous balance') ||
+                description.includes('balance brought forward') ||
+                description.includes('saldo inicial') ||
+                description.includes('balance inicial') ||
+                (i === 0 && (description.includes('saldo') || description.includes('balance')))) {
+                
+                const amount = parseFloat(transaction.amount);
+                if (!isNaN(amount) && amount !== 0) {
+                    console.log(`✅ [UI] Saldo anterior encontrado: $${Math.abs(amount)} en "${transaction.description}"`);
+                    return Math.abs(amount);
+                }
+            }
+            
+            // Si la primera transacción es un tipo específico y tiene monto significativo
+            if (i === 0 && transaction.type === 'saldo_anterior' && transaction.amount) {
+                const amount = parseFloat(transaction.amount);
+                if (!isNaN(amount)) {
+                    console.log(`✅ [UI] Saldo anterior por tipo: $${Math.abs(amount)}`);
+                    return Math.abs(amount);
+                }
+            }
+        }
+        
+        console.log('❌ [UI] No se encontró saldo anterior en transacciones');
+        return null;
+    };
+
     const resetAnalysis = () => {
         setAnalysisResult(null);
         setExtractedText('');
         setPreviewImage(null);
         setFileInfo(null);
         setAnalysisProgress(0);
+        setValidationResult(null);
+        setShowValidation(false);
+        setCardCreationModal({
+            isOpen: false,
+            suggestions: null,
+            analysisData: null,
+            pendingAnalysis: null
+        });
         if (fileInputRef.current) {
             fileInputRef.current.value = '';
+        }
+    };
+
+    // Manejar confirmación de creación de nueva tarjeta desde modal
+    const handleCreateNewCard = async () => {
+        try {
+            const { pendingAnalysis } = cardCreationModal;
+            if (!pendingAnalysis) return;
+
+            console.log('✅ Usuario confirmó crear nueva tarjeta');
+            const newCard = await createCardFromAnalysis(pendingAnalysis);
+            
+            if (newCard) {
+                // Recargar tarjetas para incluir la nueva
+                await loadCards();
+                
+                // Continuar con el guardado del statement
+                setSelectedCard(newCard.id);
+                setTimeout(async () => {
+                    await saveStatementData(pendingAnalysis);
+                }, 100);
+                
+                showNotification(
+                    'success',
+                    '✅ Tarjeta Creada',
+                    `Nueva tarjeta "${newCard.name}" creada exitosamente`,
+                    5000
+                );
+            }
+        } catch (error) {
+            console.error('Error creando nueva tarjeta:', error);
+            showNotification(
+                'error',
+                '❌ Error',
+                'No se pudo crear la nueva tarjeta',
+                5000
+            );
+        }
+    };
+
+    // Manejar vinculación con tarjeta existente desde modal
+    const handleLinkExistingCard = async (existingCard) => {
+        try {
+            const { pendingAnalysis } = cardCreationModal;
+            if (!pendingAnalysis || !existingCard) return;
+
+            console.log('🔗 Usuario eligió vincular con tarjeta existente:', existingCard.name);
+            
+            // Usar la tarjeta existente
+            setSelectedCard(existingCard.id);
+            
+            // Continuar con el guardado del statement
+            setTimeout(async () => {
+                await saveStatementData(pendingAnalysis);
+            }, 100);
+            
+            showNotification(
+                'success',
+                '🔗 Tarjeta Vinculada',
+                `Estado de cuenta vinculado con "${existingCard.name}"`,
+                5000
+            );
+        } catch (error) {
+            console.error('Error vinculando tarjeta:', error);
+            showNotification(
+                'error',
+                '❌ Error',
+                'No se pudo vincular con la tarjeta existente',
+                5000
+            );
         }
     };
 
@@ -1018,12 +1503,20 @@ INSTRUCCIONES IMPORTANTES:
                             onChange={(e) => handleCardSelect(e.target.value)}
                             className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 dark:bg-gray-700 dark:text-white"
                         >
-                            <option value="">Selecciona una tarjeta o déjala vacía para crear automáticamente</option>
-                            {cards.map((card) => (
-                                <option key={card.id} value={card.id}>
-                                    {card.name} - {card.bank} (****{card.cardNumber.slice(-4)})
-                                </option>
-                            ))}
+                            {isLoadingCards ? (
+                                <option value="">⏳ Cargando tarjetas...</option>
+                            ) : cards.length === 0 ? (
+                                <option value="">No hay tarjetas - se creará automáticamente</option>
+                            ) : (
+                                <>
+                                    <option value="">Selecciona una tarjeta o déjala vacía para análisis inteligente</option>
+                                    {cards.map((card) => (
+                                        <option key={card.id} value={card.id}>
+                                            {card.name} - {card.bank} (****{card.cardNumber?.slice(-4) || 'xxxx'})
+                                        </option>
+                                    ))}
+                                </>
+                            )}
                         </select>
                     )}
                     {!isLoadingCards && cards.length === 0 && (
@@ -1139,6 +1632,73 @@ INSTRUCCIONES IMPORTANTES:
                             Estado del Análisis
                         </h3>
                         <p className="text-sm text-gray-600 dark:text-gray-300">{extractedText}</p>
+                    </div>
+                )}
+
+                {/* Componente de Validación */}
+                {showValidation && validationResult && (
+                    <div className={`p-4 rounded-lg border-2 mb-6 ${
+                        validationResult.status === 'success' 
+                            ? 'border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-900/20'
+                            : 'border-yellow-200 bg-yellow-50 dark:border-yellow-800 dark:bg-yellow-900/20'
+                    }`}>
+                        <div className="flex items-start justify-between mb-3">
+                            <div className="flex items-center">
+                                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                                    {validationResult.title}
+                                </h3>
+                                <div className="ml-3 flex items-center">
+                                    <div className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                        validationResult.confidenceScore >= 90 ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' :
+                                        validationResult.confidenceScore >= 70 ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' :
+                                        'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
+                                    }`}>
+                                        Confianza: {validationResult.confidenceScore}%
+                                    </div>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => setShowValidation(false)}
+                                className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                            >
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            </button>
+                        </div>
+                        
+                        <p className="text-gray-700 dark:text-gray-300 mb-3">
+                            {validationResult.summary}
+                        </p>
+                        
+                        {validationResult.details.length > 0 && (
+                            <div className="space-y-2">
+                                {validationResult.details.map((detail, index) => (
+                                    <div key={index} className={`flex items-start space-x-2 p-2 rounded ${
+                                        detail.type === 'error' ? 'bg-red-50 dark:bg-red-900/30' :
+                                        detail.type === 'warning' && detail.severity === 'high' ? 'bg-orange-50 dark:bg-orange-900/30' :
+                                        'bg-blue-50 dark:bg-blue-900/30'
+                                    }`}>
+                                        <span className="text-sm">{detail.icon}</span>
+                                        <span className="text-sm text-gray-700 dark:text-gray-300 flex-1">
+                                            {detail.message}
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                        
+                        {validationResult.status === 'warning' && (
+                            <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-900/30 rounded border border-blue-200 dark:border-blue-800">
+                                <p className="text-sm text-blue-800 dark:text-blue-200 font-medium mb-1">
+                                    💡 Recomendación:
+                                </p>
+                                <p className="text-sm text-blue-700 dark:text-blue-300">
+                                    Revisa manualmente los datos marcados como inconsistentes antes de confiar completamente en ellos.
+                                    {validationResult.confidenceScore < 70 && " Considera volver a procesar el PDF con mejor calidad."}
+                                </p>
+                            </div>
+                        )}
                     </div>
                 )}
 
@@ -1377,6 +1937,21 @@ INSTRUCCIONES IMPORTANTES:
                     user={user}
                     appId={appId}
                     onCorrectionSaved={handleCorrectionSaved}
+                />
+
+                {/* Modal de creación/vinculación de tarjetas */}
+                <CardCreationModal
+                    isOpen={cardCreationModal.isOpen}
+                    onClose={() => setCardCreationModal({ 
+                        isOpen: false, 
+                        suggestions: null, 
+                        analysisData: null, 
+                        pendingAnalysis: null 
+                    })}
+                    suggestions={cardCreationModal.suggestions}
+                    analysisData={cardCreationModal.analysisData}
+                    onCreateNew={handleCreateNewCard}
+                    onLinkExisting={handleLinkExistingCard}
                 />
 
                 {/* Notificación no intrusiva */}
