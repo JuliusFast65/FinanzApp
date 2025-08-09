@@ -7,6 +7,7 @@ const CreditCardManager = ({ db, user, appId }) => {
     const { t } = useTranslation();
     const [cards, setCards] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [isSaving, setIsSaving] = useState(false);
     const [showAddModal, setShowAddModal] = useState(false);
     const [editingCard, setEditingCard] = useState(null);
     const [formData, setFormData] = useState({
@@ -29,7 +30,7 @@ const CreditCardManager = ({ db, user, appId }) => {
     const loadCards = async () => {
         try {
             setIsLoading(true);
-            const cardsRef = collection(db, `artifacts/${appId}/users/${user.uid}/creditCards`);
+            const cardsRef = collection(db, 'artifacts', appId, 'users', user.uid, 'creditCards');
             const querySnapshot = await getDocs(cardsRef);
             
             const cardsData = [];
@@ -56,10 +57,39 @@ const CreditCardManager = ({ db, user, appId }) => {
         }
     };
 
+    const checkDuplicateCard = async (cardNumber, excludeId = null) => {
+        // Verificar si ya existe una tarjeta con este número
+        const lastFour = cardNumber.slice(-4);
+        
+        for (const card of cards) {
+            if (excludeId && card.id === excludeId) continue; // Excluir la tarjeta que estamos editando
+            
+            const existingLastFour = card.cardNumber.slice(-4);
+            if (existingLastFour === lastFour) {
+                return true;
+            }
+        }
+        return false;
+    };
+
     const handleSubmit = async (e) => {
         e.preventDefault();
         
+        if (isSaving) return; // Prevenir doble-click
+        
         try {
+            setIsSaving(true);
+            
+            // Validar duplicados solo para nuevas tarjetas o si se cambió el número
+            if (!editingCard || (editingCard && editingCard.cardNumber !== formData.cardNumber)) {
+                const isDuplicate = await checkDuplicateCard(formData.cardNumber, editingCard?.id);
+                if (isDuplicate) {
+                    alert('Ya existe una tarjeta con este número. Los últimos 4 dígitos deben ser únicos.');
+                    setIsSaving(false);
+                    return;
+                }
+            }
+            
             const cardData = {
                 name: await encryptText(formData.name, user.uid),
                 bank: await encryptText(formData.bank, user.uid),
@@ -68,25 +98,31 @@ const CreditCardManager = ({ db, user, appId }) => {
                 currentBalance: parseFloat(formData.currentBalance),
                 dueDate: formData.dueDate,
                 closingDate: formData.closingDate,
-                createdAt: new Date()
+                createdAt: editingCard ? editingCard.createdAt : new Date(),
+                lastUpdated: new Date()
             };
 
             if (editingCard) {
                 // Actualizar tarjeta existente
-                const cardRef = doc(db, `artifacts/${appId}/users/${user.uid}/creditCards/${editingCard.id}`);
+                const cardRef = doc(db, 'artifacts', appId, 'users', user.uid, 'creditCards', editingCard.id);
                 await updateDoc(cardRef, cardData);
+                console.log('✅ Tarjeta actualizada exitosamente');
             } else {
                 // Agregar nueva tarjeta
-                const cardsRef = collection(db, `artifacts/${appId}/users/${user.uid}/creditCards`);
+                const cardsRef = collection(db, 'artifacts', appId, 'users', user.uid, 'creditCards');
                 await addDoc(cardsRef, cardData);
+                console.log('✅ Nueva tarjeta creada exitosamente');
             }
 
             setShowAddModal(false);
             setEditingCard(null);
             resetForm();
-            loadCards();
+            await loadCards(); // Recargar para mostrar cambios
         } catch (error) {
-            console.error('Error saving card:', error);
+            console.error('❌ Error saving card:', error);
+            alert('Error al guardar la tarjeta. Inténtalo de nuevo.');
+        } finally {
+            setIsSaving(false);
         }
     };
 
@@ -107,7 +143,7 @@ const CreditCardManager = ({ db, user, appId }) => {
     const handleDelete = async (cardId) => {
         if (window.confirm(t('creditCards.confirmDelete'))) {
             try {
-                const cardRef = doc(db, `artifacts/${appId}/users/${user.uid}/creditCards/${cardId}`);
+                const cardRef = doc(db, 'artifacts', appId, 'users', user.uid, 'creditCards', cardId);
                 await deleteDoc(cardRef);
                 loadCards();
             } catch (error) {
@@ -370,9 +406,24 @@ const CreditCardManager = ({ db, user, appId }) => {
                             <div className="flex space-x-3 pt-4">
                                 <button
                                     type="submit"
-                                    className="flex-1 bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors duration-200"
+                                    disabled={isSaving}
+                                    className={`flex-1 font-semibold py-2 px-4 rounded-lg transition-colors duration-200 ${
+                                        isSaving 
+                                            ? 'bg-gray-400 cursor-not-allowed text-gray-200' 
+                                            : 'bg-green-600 hover:bg-green-700 text-white'
+                                    }`}
                                 >
-                                    {editingCard ? t('common.update') : t('common.save')}
+                                    {isSaving ? (
+                                        <span className="flex items-center justify-center">
+                                            <svg className="animate-spin -ml-1 mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24">
+                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                            </svg>
+                                            Guardando...
+                                        </span>
+                                    ) : (
+                                        editingCard ? t('common.update') : t('common.save')
+                                    )}
                                 </button>
                                 <button
                                     type="button"

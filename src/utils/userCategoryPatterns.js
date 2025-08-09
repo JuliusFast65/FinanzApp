@@ -8,14 +8,14 @@ export const saveUserCategoryPattern = async (db, userId, appId, description, ca
         const normalizedDescription = description.toUpperCase().trim();
         
         // Verificar si ya existe un patrón para esta descripción
-        const patternsRef = collection(db, `artifacts/${appId}/users/${userId}/categoryPatterns`);
+        const patternsRef = collection(db, 'artifacts', appId, 'users', userId, 'categoryPatterns');
         const existingQuery = query(patternsRef, where('normalizedDescription', '==', normalizedDescription));
         const existingSnapshot = await getDocs(existingQuery);
         
         if (!existingSnapshot.empty) {
             // Actualizar patrón existente
             const existingDoc = existingSnapshot.docs[0];
-            await updateDoc(doc(db, `artifacts/${appId}/users/${userId}/categoryPatterns`, existingDoc.id), {
+            await updateDoc(doc(db, 'artifacts', appId, 'users', userId, 'categoryPatterns', existingDoc.id), {
                 category,
                 confidence,
                 lastUpdated: new Date(),
@@ -50,7 +50,7 @@ export const saveUserCategoryPattern = async (db, userId, appId, description, ca
 // Cargar todos los patrones personalizados del usuario
 export const loadUserCategoryPatterns = async (db, userId, appId) => {
     try {
-        const patternsRef = collection(db, `artifacts/${appId}/users/${userId}/categoryPatterns`);
+        const patternsRef = collection(db, 'artifacts', appId, 'users', userId, 'categoryPatterns');
         const snapshot = await getDocs(patternsRef);
         
         const patterns = {};
@@ -102,7 +102,7 @@ export const findUserCategoryPattern = (userPatterns, description) => {
 // Eliminar patrón personalizado
 export const deleteUserCategoryPattern = async (db, userId, appId, patternId) => {
     try {
-        await deleteDoc(doc(db, `artifacts/${appId}/users/${userId}/categoryPatterns`, patternId));
+        await deleteDoc(doc(db, 'artifacts', appId, 'users', userId, 'categoryPatterns', patternId));
         console.log('Patrón personalizado eliminado:', patternId);
     } catch (error) {
         console.error('Error eliminando patrón personalizado:', error);
@@ -113,7 +113,7 @@ export const deleteUserCategoryPattern = async (db, userId, appId, patternId) =>
 // Obtener estadísticas de patrones del usuario
 export const getUserPatternStats = async (db, userId, appId) => {
     try {
-        const patternsRef = collection(db, `artifacts/${appId}/users/${userId}/categoryPatterns`);
+        const patternsRef = collection(db, 'artifacts', appId, 'users', userId, 'categoryPatterns');
         const snapshot = await getDocs(patternsRef);
         
         const stats = {

@@ -12,7 +12,7 @@ export const DEFAULT_USER_SETTINGS = {
 // Cargar configuraciones del usuario
 export const loadUserSettings = async (db, userId, appId) => {
     try {
-        const userDoc = doc(db, `artifacts/${appId}/users/${userId}/profile/settings`);
+        const userDoc = doc(db, 'artifacts', appId, 'users', userId, 'profile', 'settings');
         const docSnap = await getDoc(userDoc);
         
         if (docSnap.exists()) {

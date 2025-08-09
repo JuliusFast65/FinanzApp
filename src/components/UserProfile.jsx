@@ -34,7 +34,7 @@ const UserProfile = ({ db, user, appId }) => {
     const loadUserProfile = async () => {
         try {
             setIsLoading(true);
-            const userDoc = doc(db, `artifacts/${appId}/users/${user.uid}/profile/settings`);
+            const userDoc = doc(db, 'artifacts', appId, 'users', user.uid, 'profile', 'settings');
             const docSnap = await getDoc(userDoc);
             
             if (docSnap.exists()) {
@@ -68,7 +68,7 @@ const UserProfile = ({ db, user, appId }) => {
     const saveUserSettings = async () => {
         try {
             setSaving(true);
-            const userDoc = doc(db, `artifacts/${appId}/users/${user.uid}/profile/settings`);
+            const userDoc = doc(db, 'artifacts', appId, 'users', user.uid, 'profile', 'settings');
             await updateDoc(userDoc, {
                 ...userSettings,
                 lastUpdated: new Date()

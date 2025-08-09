@@ -41,7 +41,7 @@ const FinanceDashboard = ({ db, user, appId }) => {
             setIsLoading(true);
             
             // Cargar tarjetas
-            const cardsRef = collection(db, `artifacts/${appId}/users/${user.uid}/creditCards`);
+            const cardsRef = collection(db, 'artifacts', appId, 'users', user.uid, 'creditCards');
             const cardsSnapshot = await getDocs(cardsRef);
             
             const cardsData = [];
@@ -78,7 +78,7 @@ const FinanceDashboard = ({ db, user, appId }) => {
             setCards(cardsData);
 
             // Cargar estados de cuenta recientes
-            const statementsRef = collection(db, `artifacts/${appId}/users/${user.uid}/statements`);
+            const statementsRef = collection(db, 'artifacts', appId, 'users', user.uid, 'statements');
             const statementsQuery = query(statementsRef, orderBy('analyzedAt', 'desc'), limit(12));
             const statementsSnapshot = await getDocs(statementsQuery);
             

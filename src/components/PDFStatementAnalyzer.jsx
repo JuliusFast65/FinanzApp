@@ -13,14 +13,20 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 // Configurar el worker de PDF.js
 pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
 
-// Configurar OpenAI
-const openai = new OpenAI({
-    apiKey: import.meta.env.VITE_OPENAI_API_KEY,
-    dangerouslyAllowBrowser: true
-});
+// Validar y configurar OpenAI
+let openai = null;
+if (import.meta.env.VITE_OPENAI_API_KEY && import.meta.env.VITE_OPENAI_API_KEY !== 'your_openai_api_key_here') {
+    openai = new OpenAI({
+        apiKey: import.meta.env.VITE_OPENAI_API_KEY,
+        dangerouslyAllowBrowser: true
+    });
+}
 
-// Configurar Gemini
-const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
+// Validar y configurar Gemini
+let genAI = null;
+if (import.meta.env.VITE_GEMINI_API_KEY && import.meta.env.VITE_GEMINI_API_KEY !== 'your_gemini_api_key_here') {
+    genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
+}
 
 const PDFStatementAnalyzer = ({ db, user, appId, onStatementAnalyzed, onNavigateToDashboard }) => {
     const { t } = useTranslation();
@@ -265,10 +271,18 @@ const PDFStatementAnalyzer = ({ db, user, appId, onStatementAnalyzed, onNavigate
             setAnalysisResult(result);
             
             if (result && Object.keys(result).length > 0) {
+                console.log('🎯 Análisis exitoso, procediendo a guardar:', result);
                 await saveStatementData(result);
+                console.log('💾 saveStatementData completado');
+                
+                // Pequeña pausa para asegurar consistencia en Firestore
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                
                 if (onStatementAnalyzed) {
                     onStatementAnalyzed(result);
                 }
+            } else {
+                console.warn('⚠️ Análisis falló o resultado vacío:', result);
             }
         } catch (error) {
             console.error('Error al analizar PDF:', error);
@@ -362,9 +376,79 @@ const PDFStatementAnalyzer = ({ db, user, appId, onStatementAnalyzed, onNavigate
         });
     };
 
+    // Función auxiliar para parsing JSON robusto
+    const parseAIResponse = (content) => {
+        console.log('🔍 Respuesta cruda de IA:', content);
+        
+        // Limpiar el contenido
+        let cleanContent = content.trim();
+        
+        // Remover bloques de código markdown
+        if (cleanContent.startsWith('```json')) {
+            cleanContent = cleanContent.replace(/```json\s*/, '').replace(/```\s*$/, '');
+        }
+        if (cleanContent.startsWith('```')) {
+            cleanContent = cleanContent.replace(/```\s*/, '').replace(/```\s*$/, '');
+        }
+        
+        // Remover texto antes del JSON
+        const jsonStart = cleanContent.indexOf('{');
+        if (jsonStart > 0) {
+            cleanContent = cleanContent.substring(jsonStart);
+        }
+        
+        // Encontrar el último } para cerrar el JSON
+        const lastBrace = cleanContent.lastIndexOf('}');
+        if (lastBrace > 0) {
+            cleanContent = cleanContent.substring(0, lastBrace + 1);
+        }
+        
+        console.log('🧹 JSON limpio:', cleanContent.substring(0, 200) + '...');
+        
+        try {
+            const parsed = JSON.parse(cleanContent);
+            console.log('✅ JSON parseado exitosamente');
+            return parsed;
+        } catch (firstError) {
+            console.warn('⚠️ Primer intento falló:', firstError.message);
+            
+            // Intento de reparación automática
+            try {
+                // Agregar comillas faltantes y cerrar estructuras
+                let repairedContent = cleanContent;
+                
+                // Si termina con coma, quitar la coma final
+                repairedContent = repairedContent.replace(/,\s*$/, '');
+                
+                // Si no termina con }, agregarlo
+                if (!repairedContent.trim().endsWith('}')) {
+                    repairedContent += '}';
+                }
+                
+                // Intentar parsear la versión reparada
+                const repaired = JSON.parse(repairedContent);
+                console.log('🔧 JSON reparado exitosamente');
+                return repaired;
+                
+            } catch (secondError) {
+                console.error('❌ No se pudo reparar el JSON:', secondError.message);
+                
+                // Como último recurso, devolver estructura básica
+                return {
+                    error: 'JSON_PARSE_ERROR',
+                    rawContent: cleanContent.substring(0, 500),
+                    message: 'La IA devolvió JSON inválido, usa los campos básicos detectados'
+                };
+            }
+        }
+    };
+
     // Analizar imagen con Gemini Vision
     const analyzeImageWithGemini = async (imageData) => {
         try {
+            if (!genAI) {
+                throw new Error('Gemini API no está configurada. Por favor configura VITE_GEMINI_API_KEY en tu archivo .env');
+            }
             console.log('Enviando imagen a Gemini 1.5 Flash...');
             
             // Convertir data URL a formato que Gemini entiende
@@ -419,16 +503,14 @@ INSTRUCCIONES:
             
             console.log('Respuesta de Gemini:', content);
 
-            // Limpiar y extraer JSON
-            let cleanContent = content.trim();
-            if (cleanContent.startsWith('```json')) {
-                cleanContent = cleanContent.replace(/```json\s*/, '').replace(/```\s*$/, '');
+            // Usar función de parsing robusto
+            const analysisData = parseAIResponse(content);
+            
+            // Verificar si hubo error de parsing
+            if (analysisData.error === 'JSON_PARSE_ERROR') {
+                throw new Error(`Gemini devolvió JSON inválido: ${analysisData.message}`);
             }
-            if (cleanContent.startsWith('```')) {
-                cleanContent = cleanContent.replace(/```\s*/, '').replace(/```\s*$/, '');
-            }
-
-            const analysisData = JSON.parse(cleanContent);
+            
             console.log('Datos extraídos con Gemini:', analysisData);
             return analysisData;
             
@@ -441,6 +523,9 @@ INSTRUCCIONES:
     // Analizar imagen con OpenAI Vision API
     const analyzeImageWithAI = async (imageData) => {
         try {
+            if (!openai) {
+                throw new Error('OpenAI API no está configurada. Por favor configura VITE_OPENAI_API_KEY en tu archivo .env');
+            }
             console.log('Enviando imagen a GPT-4o...');
             
             const response = await openai.chat.completions.create({
@@ -503,16 +588,14 @@ INSTRUCCIONES IMPORTANTES:
             const content = response.choices[0].message.content;
             console.log('Respuesta de OpenAI:', content);
 
-            // Limpiar y extraer JSON
-            let cleanContent = content.trim();
-            if (cleanContent.startsWith('```json')) {
-                cleanContent = cleanContent.replace(/```json\s*/, '').replace(/```\s*$/, '');
+            // Usar función de parsing robusto
+            const analysisData = parseAIResponse(content);
+            
+            // Verificar si hubo error de parsing
+            if (analysisData.error === 'JSON_PARSE_ERROR') {
+                throw new Error(`OpenAI devolvió JSON inválido: ${analysisData.message}`);
             }
-            if (cleanContent.startsWith('```')) {
-                cleanContent = cleanContent.replace(/```\s*/, '').replace(/```\s*$/, '');
-            }
-
-            const analysisData = JSON.parse(cleanContent);
+            
             console.log('Datos extraídos:', analysisData);
             return analysisData;
             
@@ -571,7 +654,8 @@ INSTRUCCIONES IMPORTANTES:
 
     const saveStatementData = async (analysisData) => {
         try {
-            console.log('=== GUARDANDO ESTADO DE CUENTA ===');
+            console.log('🚀 === INICIANDO GUARDADO DE ESTADO DE CUENTA ===');
+            console.log('📥 Datos recibidos para guardar:', analysisData);
             console.log('selectedCard ID:', selectedCard);
             console.log('cards array length:', cards.length);
             console.log('cards:', cards.map(c => ({ id: c.id, name: c.name })));
@@ -628,10 +712,23 @@ INSTRUCCIONES IMPORTANTES:
 
             console.log('Datos finales a guardar:', statementData);
 
-            const statementsRef = collection(db, 'artifacts', appId, 'users', user.uid, 'statements');
+            const statementsPath = `artifacts/${appId}/users/${user.uid}/statements`;
+            console.log('💾 Guardando en path:', statementsPath);
+            
+            const statementsRef = collection(db, statementsPath);
             const docRef = await addDoc(statementsRef, statementData);
             
             console.log('✅ Estado de cuenta guardado exitosamente con ID:', docRef.id);
+            console.log('✅ Path completo guardado:', `${statementsPath}/${docRef.id}`);
+            
+            // Verificación inmediata de que se guardó
+            try {
+                const verifyRef = collection(db, statementsPath);
+                const verifySnapshot = await getDocs(verifyRef);
+                console.log('🔍 Verificación inmediata - Documentos en statements:', verifySnapshot.size);
+            } catch (verifyError) {
+                console.error('❌ Error en verificación:', verifyError);
+            }
             
             // Actualizar la tarjeta con los nuevos datos (solo si es más reciente)
             if (shouldUpdateCard) {
@@ -847,16 +944,21 @@ INSTRUCCIONES IMPORTANTES:
                     <div className="grid grid-cols-2 gap-3 mb-4">
                         <button
                             onClick={() => setSelectedAI('gemini')}
+                            disabled={!genAI}
                             className={`p-3 rounded-lg border-2 transition-all ${
                                 selectedAI === 'gemini'
                                     ? 'border-green-500 bg-green-50 dark:bg-green-900/20'
+                                    : !genAI
+                                    ? 'border-gray-200 dark:border-gray-600 opacity-50 cursor-not-allowed'
                                     : 'border-gray-200 dark:border-gray-600 hover:border-gray-300'
                             }`}
                         >
                             <div className="flex items-center justify-between">
                                 <div>
                                     <h3 className="font-semibold text-gray-900 dark:text-white">Gemini 1.5 Flash</h3>
-                                    <p className="text-xs text-gray-600 dark:text-gray-300">Gratis • Google AI</p>
+                                    <p className="text-xs text-gray-600 dark:text-gray-300">
+                                        {genAI ? 'Gratis • Google AI' : 'No configurado'}
+                                    </p>
                                 </div>
                                 <div className={`w-4 h-4 rounded-full ${
                                     selectedAI === 'gemini' ? 'bg-green-500' : 'bg-gray-300'
@@ -866,16 +968,21 @@ INSTRUCCIONES IMPORTANTES:
                         
                         <button
                             onClick={() => setSelectedAI('openai')}
+                            disabled={!openai}
                             className={`p-3 rounded-lg border-2 transition-all ${
                                 selectedAI === 'openai'
                                     ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                                    : !openai
+                                    ? 'border-gray-200 dark:border-gray-600 opacity-50 cursor-not-allowed'
                                     : 'border-gray-200 dark:border-gray-600 hover:border-gray-300'
                             }`}
                         >
                             <div className="flex items-center justify-between">
                                 <div>
                                     <h3 className="font-semibold text-gray-900 dark:text-white">GPT-4o</h3>
-                                    <p className="text-xs text-gray-600 dark:text-gray-300">~$0.01 • OpenAI</p>
+                                    <p className="text-xs text-gray-600 dark:text-gray-300">
+                                        {openai ? '~$0.01 • OpenAI' : 'No configurado'}
+                                    </p>
                                 </div>
                                 <div className={`w-4 h-4 rounded-full ${
                                     selectedAI === 'openai' ? 'bg-blue-500' : 'bg-gray-300'
