@@ -4,6 +4,7 @@ import { collection, addDoc, doc, updateDoc, getDocs } from 'firebase/firestore'
 import { encryptText, decryptText } from '../utils/crypto';
 import { categorizeTransactions } from '../utils/transactionCategories';
 import { loadUserCategoryPatterns } from '../utils/userCategoryPatterns';
+import { loadUserSettings } from '../utils/userSettings';
 import CategoryCorrectionModal from './CategoryCorrectionModal';
 import * as pdfjsLib from 'pdfjs-dist';
 import OpenAI from 'openai';
@@ -32,8 +33,9 @@ const PDFStatementAnalyzer = ({ db, user, appId, onStatementAnalyzed, onNavigate
     const [cards, setCards] = useState([]);
     const [isLoadingCards, setIsLoadingCards] = useState(true);
     const [previewImage, setPreviewImage] = useState(null);
-    const [selectedAI, setSelectedAI] = useState('gemini'); // gemini por defecto (más barato)
+    const [selectedAI, setSelectedAI] = useState('openai'); // openai por defecto (mejor cuota para desarrollo)
     const [userPatterns, setUserPatterns] = useState({});
+    const [userSettings, setUserSettings] = useState(null);
     const [correctionModal, setCorrectionModal] = useState({
         isOpen: false,
         transaction: null
@@ -58,6 +60,22 @@ const PDFStatementAnalyzer = ({ db, user, appId, onStatementAnalyzed, onNavigate
             console.error('Error cargando patrones del usuario:', error);
         }
     }, [db, user, appId]);
+
+    const loadUserSettingsData = useCallback(async () => {
+        try {
+            console.log('Cargando configuraciones del usuario...');
+            const settings = await loadUserSettings(db, user.uid, appId);
+            setUserSettings(settings);
+            
+            // Aplicar la IA por defecto del usuario
+            if (settings.defaultAI && settings.defaultAI !== selectedAI) {
+                setSelectedAI(settings.defaultAI);
+                console.log('IA por defecto aplicada:', settings.defaultAI);
+            }
+        } catch (error) {
+            console.error('Error cargando configuraciones del usuario:', error);
+        }
+    }, [db, user, appId, selectedAI]);
 
     const loadCards = useCallback(async () => {
         try {
@@ -187,13 +205,14 @@ const PDFStatementAnalyzer = ({ db, user, appId, onStatementAnalyzed, onNavigate
         }
     };
 
-    // Cargar tarjetas del usuario y patrones personalizados (movido aquí al final)
+    // Cargar tarjetas del usuario, patrones personalizados y configuraciones (movido aquí al final)
     useEffect(() => {
         if (db && user && appId) {
             loadCards();
             loadUserPatterns();
+            loadUserSettingsData();
         }
-    }, [db, user, appId, loadCards, loadUserPatterns]);
+    }, [db, user, appId, loadCards, loadUserPatterns, loadUserSettingsData]);
 
     const handleFileSelect = async (event) => {
         const file = event.target.files[0];
@@ -253,12 +272,28 @@ const PDFStatementAnalyzer = ({ db, user, appId, onStatementAnalyzed, onNavigate
             }
         } catch (error) {
             console.error('Error al analizar PDF:', error);
-            showNotification(
-                'error',
-                '❌ Error de Análisis',
-                'No se pudo analizar el PDF. Verifica que sea un estado de cuenta válido e intenta nuevamente.',
-                8000
+            // Detectar si es un error de cuota
+            const isQuotaError = error.message && (
+                error.message.includes('429') || 
+                error.message.includes('quota') ||
+                error.message.includes('Too Many Requests')
             );
+            
+            if (isQuotaError) {
+                showNotification(
+                    'error',
+                    '⏳ Límite de Cuota Alcanzado',
+                    'Has alcanzado el límite de la API de IA. El análisis puede continuar con patrones básicos. Espera unos minutos o cambia a OpenAI para mejor cuota.',
+                    12000
+                );
+            } else {
+                showNotification(
+                    'error',
+                    '❌ Error de Análisis',
+                    'No se pudo analizar el PDF. Verifica que sea un estado de cuenta válido e intenta nuevamente.',
+                    8000
+                );
+            }
         } finally {
             setIsAnalyzing(false);
         }
@@ -516,7 +551,7 @@ INSTRUCCIONES IMPORTANTES:
                 setExtractedText(`🔄 Categorizando ${analysis.transactions.length} transacciones con IA...`);
                 console.log('Categorizando transacciones...');
                 
-                const categorizedTransactions = await categorizeTransactions(analysis.transactions, userPatterns);
+                const categorizedTransactions = await categorizeTransactions(analysis.transactions, userPatterns, userSettings);
                 analysis.transactions = categorizedTransactions;
                 
                 console.log('Transacciones categorizadas:', categorizedTransactions);
@@ -847,6 +882,14 @@ INSTRUCCIONES IMPORTANTES:
                                 }`}></div>
                             </div>
                         </button>
+                    </div>
+                    
+                    {/* Información sobre cuotas */}
+                    <div className="text-xs text-gray-600 dark:text-gray-400 bg-yellow-50 dark:bg-yellow-900/20 p-3 rounded-lg border border-yellow-200 dark:border-yellow-800 mb-4">
+                        <p className="font-medium mb-1">💡 Información de Cuotas:</p>
+                        <p><strong>Gemini:</strong> 15 requests/min, 1,500/día (gratis)</p>
+                        <p><strong>OpenAI:</strong> Mayor cuota disponible (requiere saldo)</p>
+                        <p><strong>Tip:</strong> Si aparece error de cuota, espera 1-2 minutos o cambia de IA</p>
                     </div>
                 </div>
 

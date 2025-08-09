@@ -218,6 +218,14 @@ Categoría:`;
         
     } catch (error) {
         console.error('Error al categorizar con IA:', error);
+        
+        // Manejo específico de errores de cuota
+        if (error.message && error.message.includes('429')) {
+            console.warn('⚠️ Límite de cuota de IA alcanzado - usando categoría "other"');
+        } else if (error.message && error.message.includes('quota')) {
+            console.warn('⚠️ Cuota de IA excedida - usando categoría "other"');
+        }
+        
         return 'other';
     }
 };
@@ -264,7 +272,7 @@ export const categorizeTransaction = async (transaction, userPatterns = null) =>
 };
 
 // Función para categorizar múltiples transacciones
-export const categorizeTransactions = async (transactions, userPatterns = null) => {
+export const categorizeTransactions = async (transactions, userPatterns = null, userSettings = null) => {
     const categorizedTransactions = [];
     
     for (const transaction of transactions) {
@@ -279,9 +287,12 @@ export const categorizeTransactions = async (transactions, userPatterns = null) 
             categoryData: TRANSACTION_CATEGORIES[result.category]
         });
         
-        // Pequeña pausa para no sobrecargar la API
+        // Pausa configurable para respetar límites de cuota
         if (result.method === 'ai') {
-            await new Promise(resolve => setTimeout(resolve, 100));
+            // Usar delay configurado por el usuario o valor por defecto
+            const delay = userSettings?.autoCategorizationDelay || 2000;
+            console.log(`Esperando ${delay}ms antes de la siguiente categorización...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
         }
     }
     
