@@ -363,7 +363,18 @@ const calculateTotalsFromTransactions = (transactions) => {
     const flattenedTransactions = flattenGroupedTransactions(transactions);
     console.log(`📊 Transacciones originales: ${transactions.length}, Transacciones desagrupadas: ${flattenedTransactions.length}`);
     
-    flattenedTransactions.forEach((transaction, index) => {
+    // 🔍 [DEBUG] FILTRAR TRANSACCIONES DE TIPO "AJUSTE"
+    const operationalTransactions = flattenedTransactions.filter(transaction => {
+        const isAdjustment = transaction.type === 'ajuste';
+        if (isAdjustment) {
+            console.log(`🔍 [DEBUG] Excluyendo transacción de tipo "ajuste": ${transaction.description} | ${transaction.amount}`);
+        }
+        return !isAdjustment; // Solo incluir transacciones operacionales
+    });
+    
+    console.log(`🔍 [DEBUG] Transacciones operacionales (excluyendo ajustes): ${operationalTransactions.length}`);
+    
+    operationalTransactions.forEach((transaction, index) => {
         const amount = parseFloat(transaction.amount) || 0;
         const normalizedAmount = Math.abs(amount); // Normalizar a valor absoluto
         const description = (transaction.description || '').toLowerCase();
@@ -383,7 +394,7 @@ const calculateTotalsFromTransactions = (transactions) => {
             detectedType = 'cargo';
         }
         
-        console.log(`📊 Transacción ${index + 1} [${group}]:`, {
+        console.log(`📊 Transacción operacional ${index + 1} [${group}]:`, {
             description: transaction.description?.substring(0, 30) + '...',
             originalType: transaction.type,
             detectedType,
@@ -432,8 +443,8 @@ const calculateTotalsFromTransactions = (transactions) => {
         }
     });
 
-    // Resumen final con desglose de pagos
-    const paymentTransactions = flattenedTransactions.filter(t => {
+    // Resumen final con desglose de pagos (solo transacciones operacionales)
+    const paymentTransactions = operationalTransactions.filter(t => {
         const amount = parseFloat(t.amount) || 0;
         const description = (t.description || '').toLowerCase();
         const detectedType = t.type;
@@ -443,7 +454,8 @@ const calculateTotalsFromTransactions = (transactions) => {
                (amount < 0 && !detectedType?.includes('cargo'));
     });
     
-    console.log('📊 Totales calculados:', totals);
+    console.log('📊 Totales calculados (excluyendo ajustes):', totals);
+    console.log(`🔍 [DEBUG] Transacciones excluidas por tipo "ajuste": ${flattenedTransactions.length - operationalTransactions.length}`);
     console.log(`💳 Resumen de pagos encontrados (${paymentTransactions.length}):`);
     paymentTransactions.forEach((payment, index) => {
         const amount = parseFloat(payment.amount) || 0;
