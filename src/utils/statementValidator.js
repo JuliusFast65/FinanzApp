@@ -60,48 +60,75 @@ export const validateStatement = (statementData) => {
             
             // Para la fórmula de saldo, preservar signos originales
             // En tarjetas de crédito: positivo = deuda, negativo = saldo a favor
-            const previousBalance = parseFloat(effectivePreviousBalance) || 0;
-            const totalBalance = parseFloat(totalBalance) || 0;
+            const parsedPreviousBalance = parseFloat(effectivePreviousBalance) || 0;
+            const parsedTotalBalance = parseFloat(totalBalance) || 0;
+            
+            // IMPORTANTE: Los totales calculados ya están normalizados como valores absolutos
+            // pero para la fórmula de saldo necesitamos considerar los signos correctos:
+            // - Si el saldo anterior es positivo (+378.64), significa deuda
+            // - Si los cargos vienen negativos en el PDF, los convertimos a positivos para la fórmula
+            // - Si los pagos vienen positivos en el PDF, los mantenemos positivos para la fórmula
             
             // Fórmula correcta: Saldo Anterior + Cargos - Pagos = Saldo Actual
             // - Saldo anterior: mantener signo original (+ deuda, - saldo a favor)
-            // - Cargos: siempre positivos (aumentan deuda)
-            // - Pagos: siempre positivos (reducen deuda)
-            const expectedBalance = previousBalance + calculatedTotals.totalCharges - calculatedTotals.totalPayments;
-            const balanceDifference = Math.abs(totalBalance - expectedBalance);
+            // - Cargos: usar valor absoluto (siempre positivo, aumentan deuda)
+            // - Pagos: usar valor absoluto (siempre positivo, reducen deuda)
+            const expectedBalance = parsedPreviousBalance + calculatedTotals.totalCharges - calculatedTotals.totalPayments;
+            const balanceDifference = Math.abs(parsedTotalBalance - expectedBalance);
 
             console.log('🧮 Validación 1 - Fórmula de saldo:', {
-                previousBalance: previousBalance,
+                previousBalance: parsedPreviousBalance,
                 totalCharges: calculatedTotals.totalCharges,
                 totalPayments: calculatedTotals.totalPayments,
                 expectedBalance: expectedBalance,
-                actualBalance: totalBalance,
+                actualBalance: parsedTotalBalance,
                 difference: balanceDifference,
-                formula: `${previousBalance} + ${calculatedTotals.totalCharges} - ${calculatedTotals.totalPayments} = ${expectedBalance}`
+                formula: `${parsedPreviousBalance} + ${calculatedTotals.totalCharges} - ${calculatedTotals.totalPayments} = ${expectedBalance}`,
+                explanation: `Saldo anterior (${parsedPreviousBalance >= 0 ? 'deuda' : 'saldo a favor'}) + Cargos (gastos) - Pagos (abonos) = Saldo esperado`
             });
 
             // Caso especial: Si todo es 0, está perfecto (tarjeta sin actividad/pagada)
-            if (previousBalance === 0 && totalBalance === 0 && 
+            if (parsedPreviousBalance === 0 && parsedTotalBalance === 0 && 
                 calculatedTotals.totalCharges === 0 && calculatedTotals.totalPayments === 0) {
                 console.log('✅ Validación 1 OK - Tarjeta sin actividad (0+0-0=0)');
             } else {
                 // Tolerancia: hasta $10 o 1% del saldo absoluto
-                const tolerance = Math.max(10, Math.abs(totalBalance) * 0.01);
+                const tolerance = Math.max(10, Math.abs(parsedTotalBalance) * 0.01);
                 
                 if (balanceDifference <= tolerance) {
                     console.log('✅ Validación 1 OK - Fórmula de saldo correcta');
                 } else {
+                    // Agregar información adicional para debugging
+                    const debugInfo = {
+                        previousBalance: parsedPreviousBalance,
+                        totalCharges: calculatedTotals.totalCharges,
+                        totalPayments: calculatedTotals.totalPayments,
+                        expectedBalance: expectedBalance,
+                        actualBalance: parsedTotalBalance,
+                        difference: balanceDifference,
+                        tolerance: tolerance,
+                        transactionCount: calculatedTotals.transactionCount
+                    };
+                    
                     validation.warnings.push({
                         type: 'balance_formula_mismatch',
                         field: 'totalBalance',
-                        message: `Fórmula de saldo no cuadra: Saldo anterior ($${previousBalance.toLocaleString()}) + Cargos ($${calculatedTotals.totalCharges.toLocaleString()}) - Pagos ($${calculatedTotals.totalPayments.toLocaleString()}) = $${expectedBalance.toLocaleString()}, pero el saldo reportado es $${totalBalance.toLocaleString()}`,
+                        message: `Fórmula de saldo no cuadra: Saldo anterior ($${parsedPreviousBalance.toLocaleString()}) + Cargos ($${calculatedTotals.totalCharges.toLocaleString()}) - Pagos ($${calculatedTotals.totalPayments.toLocaleString()}) = $${expectedBalance.toLocaleString()}, pero el saldo reportado es $${parsedTotalBalance.toLocaleString()}`,
                         severity: 'high',
                         expected: expectedBalance,
-                        actual: totalBalance,
+                        actual: parsedTotalBalance,
                         difference: balanceDifference,
-                        tolerance: tolerance
+                        tolerance: tolerance,
+                        debugInfo: debugInfo
                     });
+                    
                     console.log('❌ Validación 1 FALLA - Fórmula de saldo incorrecta');
+                    console.log('🔍 Información de debugging:', debugInfo);
+                    console.log('💡 Posibles causas:');
+                    console.log('   • Transacciones no capturadas correctamente por la IA');
+                    console.log('   • Clasificación incorrecta de cargos vs pagos');
+                    console.log('   • Montos con signos incorrectos en el PDF original');
+                    console.log('   • Comisiones o intereses no incluidos en los cargos');
                 }
             }
         } else {
@@ -311,6 +338,15 @@ const findPreviousBalanceInTransactions = (transactions) => {
 
 /**
  * Calcula totales desde las transacciones
+ * 
+ * IMPORTANTE: Esta función normaliza todos los montos a valores absolutos para la fórmula de saldo:
+ * - Los cargos (gastos) se convierten a positivos, independientemente de su signo en el PDF
+ * - Los pagos (abonos) se convierten a positivos, independientemente de su signo en el PDF
+ * 
+ * Esto es necesario porque en las tarjetas de crédito:
+ * - Saldo positivo = deuda (debes dinero)
+ * - Saldo negativo = saldo a favor (tienes crédito)
+ * - La fórmula: Saldo Anterior + Cargos - Pagos = Saldo Actual
  */
 const calculateTotalsFromTransactions = (transactions) => {
     const totals = {
@@ -323,10 +359,15 @@ const calculateTotalsFromTransactions = (transactions) => {
 
     console.log('💰 Calculando totales desde transacciones...');
     
-    transactions.forEach((transaction, index) => {
+    // Desagrupar transacciones si están agrupadas
+    const flattenedTransactions = flattenGroupedTransactions(transactions);
+    console.log(`📊 Transacciones originales: ${transactions.length}, Transacciones desagrupadas: ${flattenedTransactions.length}`);
+    
+    flattenedTransactions.forEach((transaction, index) => {
         const amount = parseFloat(transaction.amount) || 0;
         const normalizedAmount = Math.abs(amount); // Normalizar a valor absoluto
         const description = (transaction.description || '').toLowerCase();
+        const group = transaction.group || 'general'; // Grupo al que pertenece la transacción
         
         // Detectar tipo de transacción de forma más inteligente
         let detectedType = transaction.type;
@@ -342,17 +383,19 @@ const calculateTotalsFromTransactions = (transactions) => {
             detectedType = 'cargo';
         }
         
-        console.log(`📊 Transacción ${index + 1}:`, {
+        console.log(`📊 Transacción ${index + 1} [${group}]:`, {
             description: transaction.description?.substring(0, 30) + '...',
             originalType: transaction.type,
             detectedType,
             originalAmount: amount,
             normalizedAmount,
-            isNegative: amount < 0
+            isNegative: amount < 0,
+            group: group
         });
         
         if (detectedType === 'cargo' || detectedType === 'charge') {
-            // Para cargos, usar valor absoluto (siempre positivo)
+            // Para cargos, usar valor absoluto (siempre positivo para la fórmula)
+            // Nota: En PDFs, los cargos pueden venir con signo negativo, pero los convertimos a positivo
             totals.totalCharges += normalizedAmount;
             
             // Detectar comisiones e intereses en las descripciones
@@ -364,30 +407,33 @@ const calculateTotalsFromTransactions = (transactions) => {
                 description.includes('interest') || description.includes('financiamiento')) {
                 totals.totalInterest += normalizedAmount;
             }
+            
+            console.log(`💸 Cargo detectado #${index + 1} [${group}]: ${normalizedAmount} (original: ${amount}, signo: ${amount >= 0 ? '+' : '-'})`);
         } else if (detectedType === 'pago' || detectedType === 'payment' || detectedType === 'abono') {
-            // Para pagos, usar valor absoluto (convertir -319.45 a 319.45)
+            // Para pagos, usar valor absoluto (siempre positivo para la fórmula)
+            // Nota: En PDFs, los pagos pueden venir con signo positivo, pero los mantenemos positivos
             totals.totalPayments += normalizedAmount;
             
-            console.log(`💳 Pago detectado #${index + 1}: ${normalizedAmount} (original: ${amount})`);
+            console.log(`💳 Pago detectado #${index + 1} [${group}]: ${normalizedAmount} (original: ${amount}, signo: ${amount >= 0 ? '+' : '-'})`);
             console.log(`💰 Total de pagos acumulado hasta ahora: ${totals.totalPayments}`);
         } else {
             // Transacción no clasificada - intentar clasificar por monto
-            console.log(`❓ Transacción no clasificada, usando heurística por monto`);
+            console.log(`❓ Transacción no clasificada [${group}], usando heurística por monto`);
             if (amount < 0) {
-                // Monto negativo probablemente es un pago
+                // Monto negativo probablemente es un pago (abono)
                 totals.totalPayments += normalizedAmount;
-                console.log(`💳 Clasificado como pago por monto negativo #${index + 1}: ${normalizedAmount} (original: ${amount})`);
+                console.log(`💳 Clasificado como pago por monto negativo #${index + 1} [${group}]: ${normalizedAmount} (original: ${amount})`);
                 console.log(`💰 Total de pagos acumulado hasta ahora: ${totals.totalPayments}`);
             } else {
-                // Monto positivo probablemente es un cargo
+                // Monto positivo probablemente es un cargo (gasto)
                 totals.totalCharges += normalizedAmount;
-                console.log(`💳 Clasificado como cargo por monto positivo: ${normalizedAmount}`);
+                console.log(`💸 Clasificado como cargo por monto positivo [${group}]: ${normalizedAmount}`);
             }
         }
     });
 
     // Resumen final con desglose de pagos
-    const paymentTransactions = transactions.filter(t => {
+    const paymentTransactions = flattenedTransactions.filter(t => {
         const amount = parseFloat(t.amount) || 0;
         const description = (t.description || '').toLowerCase();
         const detectedType = t.type;
@@ -401,11 +447,123 @@ const calculateTotalsFromTransactions = (transactions) => {
     console.log(`💳 Resumen de pagos encontrados (${paymentTransactions.length}):`);
     paymentTransactions.forEach((payment, index) => {
         const amount = parseFloat(payment.amount) || 0;
-        console.log(`  ${index + 1}. ${payment.description?.substring(0, 40)}... → ${Math.abs(amount)} (original: ${amount})`);
+        const group = payment.group || 'general';
+        console.log(`  ${index + 1}. [${group}] ${payment.description?.substring(0, 40)}... → ${Math.abs(amount)} (original: ${amount})`);
     });
     console.log(`💰 Total de pagos sumado: ${totals.totalPayments}`);
     
+    // Resumen final para debugging de la fórmula de saldo
+    console.log('🧮 RESUMEN PARA FÓRMULA DE SALDO:');
+    console.log(`  • Total Cargos (gastos): $${totals.totalCharges} (siempre positivo para la fórmula)`);
+    console.log(`  • Total Pagos (abonos): $${totals.totalPayments} (siempre positivo para la fórmula)`);
+    console.log(`  • Fórmula: Saldo Anterior + ${totals.totalCharges} - ${totals.totalPayments} = Saldo Esperado`);
+    
     return totals;
+};
+
+/**
+ * Desagrupa transacciones que pueden estar agrupadas en el estado de cuenta
+ * Los estados de cuenta suelen agrupar transacciones por:
+ * - Pagos (al inicio)
+ * - Débitos por cargos financieros
+ * - Grupos por tarjetas adicionales
+ * - Comisiones e intereses
+ * 
+ * @param {Array} transactions - Array de transacciones que pueden estar agrupadas
+ * @returns {Array} Array de transacciones desagrupadas con información del grupo
+ */
+const flattenGroupedTransactions = (transactions) => {
+    const flattened = [];
+    
+    transactions.forEach((transaction, index) => {
+        // Si la transacción ya tiene un grupo definido, mantenerlo
+        if (transaction.group) {
+            flattened.push(transaction);
+            return;
+        }
+        
+        // Detectar si es una transacción agrupada basándose en la descripción
+        const description = (transaction.description || '').toLowerCase();
+        const amount = parseFloat(transaction.amount) || 0;
+        
+        // Detectar grupos comunes en estados de cuenta
+        let detectedGroup = 'general';
+
+        // PRIORIDAD 1: Pagos y abonos (generalmente al inicio del estado)
+        if (description.includes('pago') || description.includes('abono') ||
+            description.includes('payment') || description.includes('transferencia') ||
+            description.includes('depósito') || description.includes('deposito') ||
+            description.includes('deposit') || description.includes('crédito') ||
+            description.includes('credito') || description.includes('credit') ||
+            description.includes('reembolso') || description.includes('refund') ||
+            amount < 0) {
+            detectedGroup = 'pagos';
+            console.log(`💳 [DEBUG] Transacción ${index + 1} desagrupada como 'pagos' por:`, {
+                description: description,
+                amount: amount,
+                reason: amount < 0 ? 'monto negativo' : 'patrón de descripción'
+            });
+        } 
+        // PRIORIDAD 2: Comisiones y cargos financieros
+        else if (description.includes('comisión') || description.includes('comision') ||
+                 description.includes('fee') || description.includes('cargo por') ||
+                 description.includes('cargo financiero') || description.includes('financial charge') ||
+                 description.includes('cargo por uso') || description.includes('usage charge') ||
+                 description.includes('cargo por retiro') || description.includes('cash advance fee')) {
+            detectedGroup = 'comisiones';
+            console.log(`💰 [DEBUG] Transacción ${index + 1} desagrupada como 'comisiones'`);
+        } 
+        // PRIORIDAD 3: Intereses
+        else if (description.includes('interés') || description.includes('interes') ||
+                 description.includes('interest') || description.includes('financiamiento') ||
+                 description.includes('financing') || description.includes('cargo por financiamiento')) {
+            detectedGroup = 'intereses';
+            console.log(`📈 [DEBUG] Transacción ${index + 1} desagrupada como 'intereses'`);
+        } 
+        // PRIORIDAD 4: Tarjetas adicionales
+        else if (description.includes('tarjeta adicional') || description.includes('additional card') ||
+                 description.includes('titular') || description.includes('cardholder') ||
+                 description.includes('tarjeta suplementaria') || description.includes('supplementary card') ||
+                 description.includes('cargo por tarjeta adicional')) {
+            detectedGroup = 'tarjeta_adicional';
+            console.log(`🔄 [DEBUG] Transacción ${index + 1} desagrupada como 'tarjeta_adicional'`);
+        } 
+        // PRIORIDAD 5: Compras y cargos (por defecto)
+        else if (description.includes('compra') || description.includes('cargo') ||
+                 description.includes('purchase') || description.includes('débito') ||
+                 description.includes('debito') || description.includes('debit') ||
+                 description.includes('transacción') || description.includes('transaction') ||
+                 amount > 0) {
+            detectedGroup = 'compras';
+            console.log(`🛒 [DEBUG] Transacción ${index + 1} desagrupada como 'compras' por:`, {
+                description: description,
+                amount: amount,
+                reason: amount > 0 ? 'monto positivo' : 'patrón de descripción'
+            });
+        } else {
+            console.log(`⚠️ [DEBUG] Transacción ${index + 1} desagrupada como 'general' (sin patrón detectado):`, {
+                description: description,
+                amount: amount
+            });
+        }
+        
+        // Agregar la transacción con información del grupo
+        flattened.push({
+            ...transaction,
+            group: detectedGroup
+        });
+    });
+    
+    return flattened;
+};
+
+/**
+ * Función exportada para desagrupar transacciones en otros componentes
+ * @param {Array} transactions - Array de transacciones que pueden estar agrupadas
+ * @returns {Array} Array de transacciones desagrupadas con información del grupo
+ */
+export const getFlattenedTransactions = (transactions) => {
+    return flattenGroupedTransactions(transactions);
 };
 
 /**

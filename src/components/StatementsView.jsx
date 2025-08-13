@@ -101,11 +101,28 @@ const StatementsView = ({ db, user, appId }) => {
                 // Desencriptar transacciones si existen (manejar casos encriptados y no encriptados)
                 let transactions = [];
                 if (data.transactions && Array.isArray(data.transactions)) {
+                    // 🔍 [DEBUG] LOG ANTES DE DESENCRIPTAR
+                    console.log(`🔍 [DEBUG] === STATEMENT ${doc.id} - ANTES DE DESENCRIPTAR ===`);
+                    console.log(`🔍 [DEBUG] Transacciones encriptadas encontradas:`, data.transactions.length);
+                    data.transactions.forEach((t, i) => {
+                        console.log(`  ${i + 1}. [${t.group || 'sin grupo'}] ${t.description?.substring(0, 40)}... | ${t.amount} | ${t.type}`);
+                    });
+                    
                     transactions = await Promise.all(
-                        data.transactions.map(async (transaction) => {
+                        data.transactions.map(async (transaction, index) => {
                             try {
                                 // Intentar desencriptar, si falla usar el texto plano
                                 const description = await decryptText(transaction.description, user.uid);
+                                
+                                // 🔍 [DEBUG] LOG DE DESENCRIPTADO EXITOSO
+                                console.log(`🔍 [DEBUG] Transacción ${index + 1} desencriptada exitosamente:`, {
+                                    original: transaction.description?.substring(0, 40) + '...',
+                                    decrypted: description?.substring(0, 40) + '...',
+                                    amount: transaction.amount,
+                                    type: transaction.type,
+                                    group: transaction.group
+                                });
+                                
                                 return {
                                     ...transaction,
                                     description: description,
@@ -113,7 +130,14 @@ const StatementsView = ({ db, user, appId }) => {
                                 };
                             } catch (error) {
                                 // Si no se puede desencriptar, usar el texto plano (para datos antiguos)
-                                console.log('Usando descripción sin encriptar para transacción:', transaction.description);
+                                console.log(`🔍 [DEBUG] Transacción ${index + 1} usando descripción sin encriptar:`, {
+                                    description: transaction.description?.substring(0, 40) + '...',
+                                    amount: transaction.amount,
+                                    type: transaction.type,
+                                    group: transaction.group,
+                                    error: error.message
+                                });
+                                
                                 return {
                                     ...transaction,
                                     description: transaction.description,
@@ -122,7 +146,28 @@ const StatementsView = ({ db, user, appId }) => {
                             }
                         })
                     );
+                    
+                    // 🔍 [DEBUG] LOG DESPUÉS DE DESENCRIPTAR
+                    console.log(`🔍 [DEBUG] === STATEMENT ${doc.id} - DESPUÉS DE DESENCRIPTAR ===`);
+                    console.log(`🔍 [DEBUG] Transacciones desencriptadas:`, transactions.length);
+                    transactions.forEach((t, i) => {
+                        console.log(`  ${i + 1}. [${t.group || 'sin grupo'}] ${t.description?.substring(0, 40)}... | ${t.amount} | ${t.type}`);
+                    });
+                } else {
+                    console.log(`🔍 [DEBUG] Statement ${doc.id} no tiene transacciones o no es un array válido:`, {
+                        hasTransactions: !!data.transactions,
+                        isArray: Array.isArray(data.transactions),
+                        transactionsType: typeof data.transactions,
+                        transactionsValue: data.transactions
+                    });
                 }
+                
+                // 🔍 [DEBUG] LOG ANTES DE AGREGAR AL ARRAY
+                console.log(`🔍 [DEBUG] === STATEMENT ${doc.id} - ANTES DE AGREGAR AL ARRAY ===`);
+                console.log(`🔍 [DEBUG] Transacciones a agregar:`, transactions.length);
+                transactions.forEach((t, i) => {
+                    console.log(`  ${i + 1}. [${t.group || 'sin grupo'}] ${t.description?.substring(0, 40)}... | ${t.amount} | ${t.type}`);
+                });
                 
                 statementsData.push({
                     id: doc.id,
@@ -133,6 +178,25 @@ const StatementsView = ({ db, user, appId }) => {
             
             setStatements(statementsData);
             console.log('📊 Estados de cuenta cargados:', statementsData.length);
+            
+            // 🔍 [DEBUG] LOG FINAL DE TODOS LOS STATEMENTS CARGADOS
+            console.log('🔍 [DEBUG] === RESUMEN FINAL DE STATEMENTS CARGADOS ===');
+            statementsData.forEach((statement, index) => {
+                console.log(`🔍 [DEBUG] Statement ${index + 1} (ID: ${statement.id}):`, {
+                    fileName: statement.fileName,
+                    transactionsCount: statement.transactions?.length || 0,
+                    hasTransactions: !!statement.transactions,
+                    isArray: Array.isArray(statement.transactions)
+                });
+                
+                if (statement.transactions && statement.transactions.length > 0) {
+                    console.log(`🔍 [DEBUG] Transacciones del statement ${index + 1}:`);
+                    statement.transactions.forEach((t, i) => {
+                        console.log(`  ${i + 1}. [${t.group || 'sin grupo'}] ${t.description?.substring(0, 40)}... | ${t.amount} | ${t.type}`);
+                    });
+                }
+            });
+            
             if (statementsData.length > 0) {
                 console.log('✅ Primer statement:', statementsData[0]);
             }
@@ -508,14 +572,27 @@ const StatementsView = ({ db, user, appId }) => {
                                     
                                     {selectedStatement.transactions?.length > 0 ? (
                                         <div className="overflow-x-auto">
-                                            <table className="w-full text-sm">
+                                            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-600">
                                                 <thead className="bg-gray-50 dark:bg-gray-700">
                                                     <tr>
-                                                        <th className="px-4 py-3 text-left font-medium text-gray-700 dark:text-gray-300">Fecha</th>
-                                                        <th className="px-4 py-3 text-left font-medium text-gray-700 dark:text-gray-300">Descripción</th>
-                                                        <th className="px-4 py-3 text-right font-medium text-gray-700 dark:text-gray-300">Monto</th>
-                                                        <th className="px-4 py-3 text-center font-medium text-gray-700 dark:text-gray-300">Categoría</th>
-                                                        <th className="px-4 py-3 text-center font-medium text-gray-700 dark:text-gray-300">Acciones</th>
+                                                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                                            Fecha
+                                                        </th>
+                                                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                                            Descripción
+                                                        </th>
+                                                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                                            Monto
+                                                        </th>
+                                                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                                            Grupo
+                                                        </th>
+                                                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                                            Categoría
+                                                        </th>
+                                                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                                            Acciones
+                                                        </th>
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-gray-200 dark:divide-gray-600">
@@ -533,6 +610,30 @@ const StatementsView = ({ db, user, appId }) => {
                                                                 <span className={`${transaction.type === 'cargo' ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}>
                                                                     ${transaction.amount?.toLocaleString()}
                                                                 </span>
+                                                            </td>
+                                                            <td className="px-4 py-3 text-center">
+                                                                {transaction.group ? (
+                                                                    <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium text-white ${
+                                                                        transaction.group === 'pagos' ? 'bg-green-600' :
+                                                                        transaction.group === 'comisiones' ? 'bg-yellow-600' :
+                                                                        transaction.group === 'intereses' ? 'bg-orange-600' :
+                                                                        transaction.group === 'tarjeta_adicional' ? 'bg-purple-600' :
+                                                                        transaction.group === 'compras' ? 'bg-blue-600' :
+                                                                        'bg-gray-600'
+                                                                    }`}>
+                                                                        {transaction.group === 'pagos' ? '💳' :
+                                                                         transaction.group === 'comisiones' ? '💰' :
+                                                                         transaction.group === 'intereses' ? '📈' :
+                                                                         transaction.group === 'tarjeta_adicional' ? '🔄' :
+                                                                         transaction.group === 'compras' ? '🛒' :
+                                                                         '📋'}
+                                                                        {transaction.group.replace('_', ' ')}
+                                                                    </span>
+                                                                ) : (
+                                                                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300">
+                                                                        📋 General
+                                                                    </span>
+                                                                )}
                                                             </td>
                                                             <td className="px-4 py-3 text-center">
                                                                 {transaction.categoryData ? (

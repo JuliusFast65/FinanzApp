@@ -282,7 +282,8 @@ export const parseTransactionsResponse = (content) => {
                 description: transaction.description || '',
                 amount: parseFloat(transaction.amount) || 0,
                 type: transaction.type || 'cargo',
-                category: transaction.category || null
+                category: transaction.category || null,
+                group: transaction.group || null // Campo para identificar el grupo de la transacción
             };
 
             // Solo agregar si tiene datos mínimos válidos
@@ -293,7 +294,103 @@ export const parseTransactionsResponse = (content) => {
     }
 
     console.log(`✅ ${validTransactions.length} transacciones válidas parseadas (método: ${result.method})`);
-    return validTransactions;
+    
+    // Detectar y asignar grupos si no están definidos
+    const transactionsWithGroups = assignTransactionGroups(validTransactions);
+    
+    return transactionsWithGroups;
+};
+
+/**
+ * Asigna grupos a transacciones basándose en patrones comunes en estados de cuenta
+ * @param {Array} transactions - Array de transacciones
+ * @returns {Array} Array de transacciones con grupos asignados
+ */
+const assignTransactionGroups = (transactions) => {
+    console.log('🔍 [DEBUG] Asignando grupos a transacciones:', transactions.length);
+    
+    return transactions.map((transaction, index) => {
+        // Si ya tiene grupo definido, mantenerlo
+        if (transaction.group) {
+            console.log(`✅ Transacción ${index + 1} ya tiene grupo: ${transaction.group}`);
+            return transaction;
+        }
+        
+        const description = (transaction.description || '').toLowerCase();
+        const amount = parseFloat(transaction.amount) || 0;
+        
+        console.log(`🔍 [DEBUG] Analizando transacción ${index + 1}:`, {
+            description: transaction.description,
+            amount: transaction.amount,
+            parsedAmount: amount
+        });
+        
+        // Detectar grupos comunes en estados de cuenta
+        let detectedGroup = 'general';
+        
+        // PRIORIDAD 1: Pagos y abonos (generalmente al inicio del estado)
+        if (description.includes('pago') || description.includes('abono') || 
+            description.includes('payment') || description.includes('transferencia') ||
+            description.includes('depósito') || description.includes('deposito') ||
+            description.includes('deposit') || description.includes('crédito') ||
+            description.includes('credito') || description.includes('credit') ||
+            description.includes('reembolso') || description.includes('refund') ||
+            amount < 0) {
+            detectedGroup = 'pagos';
+            console.log(`💳 [DEBUG] Transacción ${index + 1} asignada a grupo 'pagos' por:`, {
+                description: description,
+                amount: amount,
+                reason: amount < 0 ? 'monto negativo' : 'patrón de descripción'
+            });
+        } 
+        // PRIORIDAD 2: Comisiones y cargos financieros
+        else if (description.includes('comisión') || description.includes('comision') || 
+                 description.includes('fee') || description.includes('cargo por') ||
+                 description.includes('cargo financiero') || description.includes('financial charge') ||
+                 description.includes('cargo por uso') || description.includes('usage charge') ||
+                 description.includes('cargo por retiro') || description.includes('cash advance fee')) {
+            detectedGroup = 'comisiones';
+            console.log(`💰 [DEBUG] Transacción ${index + 1} asignada a grupo 'comisiones'`);
+        } 
+        // PRIORIDAD 3: Intereses
+        else if (description.includes('interés') || description.includes('interes') || 
+                 description.includes('interest') || description.includes('financiamiento') ||
+                 description.includes('financing') || description.includes('cargo por financiamiento')) {
+            detectedGroup = 'intereses';
+            console.log(`📈 [DEBUG] Transacción ${index + 1} asignada a grupo 'intereses'`);
+        } 
+        // PRIORIDAD 4: Tarjetas adicionales
+        else if (description.includes('tarjeta adicional') || description.includes('additional card') ||
+                 description.includes('titular') || description.includes('cardholder') ||
+                 description.includes('tarjeta suplementaria') || description.includes('supplementary card') ||
+                 description.includes('cargo por tarjeta adicional')) {
+            detectedGroup = 'tarjeta_adicional';
+            console.log(`🔄 [DEBUG] Transacción ${index + 1} asignada a grupo 'tarjeta_adicional'`);
+        } 
+        // PRIORIDAD 5: Compras y cargos (por defecto)
+        else if (description.includes('compra') || description.includes('cargo') || 
+                 description.includes('purchase') || description.includes('débito') ||
+                 description.includes('debito') || description.includes('debit') ||
+                 description.includes('transacción') || description.includes('transaction') ||
+                 amount > 0) {
+            detectedGroup = 'compras';
+            console.log(`🛒 [DEBUG] Transacción ${index + 1} asignada a grupo 'compras' por:`, {
+                description: description,
+                amount: amount,
+                reason: amount > 0 ? 'monto positivo' : 'patrón de descripción'
+            });
+        } else {
+            console.log(`⚠️ [DEBUG] Transacción ${index + 1} asignada a grupo 'general' (sin patrón detectado):`, {
+                description: description,
+                amount: amount
+            });
+        }
+        
+        return {
+            ...transaction,
+            group: detectedGroup
+        };
+    });
 };
 
 /**

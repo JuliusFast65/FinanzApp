@@ -548,11 +548,19 @@ INSTRUCCIONES:
     const analyzePageForTransactions = async (imageData, pageNumber) => {
         try {
             console.log(`🔍 Analizando página ${pageNumber} para transacciones...`);
+            console.log(`🔍 [DEBUG] Tipo de imageData:`, typeof imageData);
+            console.log(`🔍 [DEBUG] Longitud de imageData:`, imageData?.length || 0);
+            console.log(`🔍 [DEBUG] Primeros 100 chars de imageData:`, imageData?.substring(0, 100));
             
             // Usar la IA seleccionada para extraer solo transacciones
             const transactions = selectedAI === 'gemini'
                 ? await analyzePageTransactionsWithGemini(imageData, pageNumber)
                 : await analyzePageTransactionsWithAI(imageData, pageNumber);
+                
+            console.log(`🔍 [DEBUG] Resultado de análisis página ${pageNumber}:`, transactions);
+            console.log(`🔍 [DEBUG] Tipo de resultado:`, typeof transactions);
+            console.log(`🔍 [DEBUG] Es array:`, Array.isArray(transactions));
+            console.log(`🔍 [DEBUG] Longitud del resultado:`, transactions?.length || 0);
                 
             return transactions || [];
         } catch (error) {
@@ -571,24 +579,64 @@ INSTRUCCIONES:
             const base64Data = imageData.split(',')[1];
             const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
             
-            const prompt = `Analiza esta página ${pageNumber} de un estado de cuenta de tarjeta de crédito y extrae SOLO las transacciones en formato JSON estricto:
+            const prompt = `Analiza esta página ${pageNumber} de un estado de cuenta de tarjeta de crédito y extrae TODAS las transacciones en formato JSON estricto:
 
 [
   {
     "date": "YYYY-MM-DD",
     "description": "descripción_transacción",
     "amount": número_decimal,
-    "type": "cargo|pago|ajuste"
+    "type": "cargo|pago|ajuste",
+    "group": "pagos|comisiones|intereses|tarjeta_adicional|compras|general"
   }
 ]
 
-INSTRUCCIONES:
-- Devuelve SOLO el array JSON de transacciones, sin texto adicional
-- NO incluyas resúmenes, saldos o información general, SOLO transacciones individuales
-- Si no hay transacciones en esta página, devuelve un array vacío: []
-- Para montos usa números decimales sin símbolos
-- Las fechas en formato YYYY-MM-DD
-- Busca movimientos, compras, pagos, cargos, etc.`;
+INSTRUCCIONES CRÍTICAS PARA SECCIONES AGRUPADAS:
+- Los estados de cuenta suelen tener SECCIONES AGRUPADAS con subtotales
+- PRIMER GRUPO: Generalmente "PAGOS/CREDITOS" o "SALDO ANTERIOR" al inicio
+- SEGUNDO GRUPO: Comisiones, intereses, notas de débito
+- TERCER GRUPO: Consumos/compras del período
+- DEBES extraer TODAS las transacciones de TODAS las secciones agrupadas
+- NO omitas transacciones por estar en resúmenes o subtotales
+- Busca en TODA la página, especialmente en las secciones superiores
+- Revisa también secciones de "MOVIMIENTOS DEL PERIODO" o "DETALLE DE MOVIMIENTOS"
+- Si hay un subtotal de grupo, extrae también las transacciones individuales que lo componen
+
+INTERPRETACIÓN CRÍTICA DE TIPOS DE OPERACIÓN:
+- **"DEV"** = DEVOLUCIÓN = tipo "pago" (crédito que reduce deuda)
+- **"CV"** = CRÉDITO = tipo "pago" (crédito que reduce deuda)
+- **"PAGO"** = PAGO = tipo "pago" (crédito que reduce deuda)
+- **"N/D"** = NOTA DE DÉBITO = tipo "cargo" (débito que aumenta deuda)
+- **"CONS."** = CONSUMO = tipo "cargo" (débito que aumenta deuda)
+- **"SALDO ANTERIOR"** = tipo "ajuste" (balance inicial)
+
+INTERPRETACIÓN CRÍTICA DE COLUMNAS DE SIGNO:
+- **Columna "+/-"**: 
+  - **"+"** = DÉBITO (aumenta deuda) = tipo "cargo"
+  - **"-"** = CRÉDITO (reduce deuda) = tipo "pago"
+  - **Vacía** = Revisar tipo de operación o descripción
+- **Columna "SIGNO"** o "INDICADOR":
+  - **"D"** = DÉBITO = tipo "cargo"
+  - **"C"** = CRÉDITO = tipo "pago"
+  - **"+"** = DÉBITO = tipo "cargo"
+  - **"-"** = CRÉDITO = tipo "pago"
+
+IMPORTANTE: El tipo de transacción debe basarse en:
+1. **PRIMERO**: El TIPO DE OPERACIÓN (DEV, CV, PAGO, N/D, CONS.)
+2. **SEGUNDO**: Las columnas de SIGNO (+/-, D/C, +, -)
+3. **TERCERO**: El monto (negativo = crédito, positivo = débito, pero no siempre)
+
+- Una transacción con tipo "DEV" siempre es un crédito, aunque el monto sea positivo
+- Una transacción con tipo "N/D" siempre es un débito, aunque el monto sea pequeño
+- Una transacción con signo "+" siempre es un débito, aunque el tipo de operación sea ambiguo
+- Una transacción con signo "-" siempre es un crédito, aunque el tipo de operación sea ambiguo
+
+Devuelve SOLO el array JSON de transacciones, sin texto adicional
+Si no hay transacciones en esta página, devuelve un array vacío: []
+Para montos usa números decimales (ej: 1234.56)
+Las fechas en formato YYYY-MM-DD
+Los montos negativos indican pagos/créditos
+Busca movimientos, compras, pagos, cargos, etc. de TODOS los grupos`;
 
             const imagePart = {
                 inlineData: {
@@ -619,6 +667,11 @@ INSTRUCCIONES:
                 throw new Error('OpenAI API no está configurada');
             }
             
+            console.log(`🔍 [DEBUG] === ANÁLISIS OPENAI PÁGINA ${pageNumber} ===`);
+            console.log(`🔍 [DEBUG] Tipo de imageData:`, typeof imageData);
+            console.log(`🔍 [DEBUG] Longitud de imageData:`, imageData?.length || 0);
+            console.log(`🔍 [DEBUG] Primeros 100 chars de imageData:`, imageData?.substring(0, 100));
+            
             const response = await openai.chat.completions.create({
                 model: "gpt-4o",
                 messages: [
@@ -627,25 +680,64 @@ INSTRUCCIONES:
                         content: [
                             {
                                 type: "text",
-                                text: `Analiza esta página ${pageNumber} de un estado de cuenta de tarjeta de crédito y extrae SOLO las transacciones en formato JSON estricto:
+                                text: `Analiza esta página ${pageNumber} de un estado de cuenta de tarjeta de crédito y extrae TODAS las transacciones en formato JSON estricto:
 
 [
   {
     "date": "YYYY-MM-DD",
     "description": "descripción_transacción",
     "amount": número_decimal,
-    "type": "cargo|pago|ajuste"
+    "type": "cargo|pago|ajuste",
+    "group": "pagos|comisiones|intereses|tarjeta_adicional|compras|general"
   }
 ]
 
-INSTRUCCIONES:
-- Devuelve SOLO el array JSON de transacciones, sin texto adicional
-- NO incluyas resúmenes, saldos o información general, SOLO transacciones individuales
-- Si no hay transacciones en esta página, devuelve un array vacío: []
-- Para montos usa números decimales (ej: 1234.56)
-- Las fechas en formato YYYY-MM-DD
-- Los montos negativos indican pagos/créditos
-- Busca movimientos, compras, pagos, cargos, etc.`
+INSTRUCCIONES CRÍTICAS PARA SECCIONES AGRUPADAS:
+- Los estados de cuenta suelen tener SECCIONES AGRUPADAS con subtotales
+- PRIMER GRUPO: Generalmente "PAGOS/CREDITOS" o "SALDO ANTERIOR" al inicio
+- SEGUNDO GRUPO: Comisiones, intereses, notas de débito
+- TERCER GRUPO: Consumos/compras del período
+- DEBES extraer TODAS las transacciones de TODAS las secciones agrupadas
+- NO omitas transacciones por estar en resúmenes o subtotales
+- Busca en TODA la página, especialmente en las secciones superiores
+- Revisa también secciones de "MOVIMIENTOS DEL PERIODO" o "DETALLE DE MOVIMIENTOS"
+- Si hay un subtotal de grupo, extrae también las transacciones individuales que lo componen
+
+INTERPRETACIÓN CRÍTICA DE TIPOS DE OPERACIÓN:
+- **"DEV"** = DEVOLUCIÓN = tipo "pago" (crédito que reduce deuda)
+- **"CV"** = CRÉDITO = tipo "pago" (crédito que reduce deuda)
+- **"PAGO"** = PAGO = tipo "pago" (crédito que reduce deuda)
+- **"N/D"** = NOTA DE DÉBITO = tipo "cargo" (débito que aumenta deuda)
+- **"CONS."** = CONSUMO = tipo "cargo" (débito que aumenta deuda)
+- **"SALDO ANTERIOR"** = tipo "ajuste" (balance inicial)
+
+INTERPRETACIÓN CRÍTICA DE COLUMNAS DE SIGNO:
+- **Columna "+/-"**: 
+  - **"+"** = DÉBITO (aumenta deuda) = tipo "cargo"
+  - **"-"** = CRÉDITO (reduce deuda) = tipo "pago"
+  - **Vacía** = Revisar tipo de operación o descripción
+- **Columna "SIGNO"** o "INDICADOR":
+  - **"D"** = DÉBITO = tipo "cargo"
+  - **"C"** = CRÉDITO = tipo "pago"
+  - **"+"** = DÉBITO = tipo "cargo"
+  - **"-"** = CRÉDITO = tipo "pago"
+
+IMPORTANTE: El tipo de transacción debe basarse en:
+1. **PRIMERO**: El TIPO DE OPERACIÓN (DEV, CV, PAGO, N/D, CONS.)
+2. **SEGUNDO**: Las columnas de SIGNO (+/-, D/C, +, -)
+3. **TERCERO**: El monto (negativo = crédito, positivo = débito, pero no siempre)
+
+- Una transacción con tipo "DEV" siempre es un crédito, aunque el monto sea positivo
+- Una transacción con tipo "N/D" siempre es un débito, aunque el monto sea pequeño
+- Una transacción con signo "+" siempre es un débito, aunque el tipo de operación sea ambiguo
+- Una transacción con signo "-" siempre es un crédito, aunque el tipo de operación sea ambiguo
+
+Devuelve SOLO el array JSON de transacciones, sin texto adicional
+Si no hay transacciones en esta página, devuelve un array vacío: []
+Para montos usa números decimales (ej: 1234.56)
+Las fechas en formato YYYY-MM-DD
+Los montos negativos indican pagos/créditos
+Busca movimientos, compras, pagos, cargos, etc. de TODOS los grupos`
                             },
                             {
                                 type: "image_url",
@@ -656,20 +748,34 @@ INSTRUCCIONES:
                         ]
                     }
                 ],
-                max_tokens: 1500,
-                temperature: 0.1
+                max_tokens: 2000,
+                temperature: 0.1 // Baja temperatura para respuestas más consistentes
             });
 
             const content = response.choices[0].message.content;
-            console.log(`Respuesta OpenAI página ${pageNumber}:`, content);
+            console.log(`🔍 [DEBUG] Respuesta de OpenAI página ${pageNumber}:`, content);
+            console.log(`🔍 [DEBUG] Tipo de respuesta:`, typeof content);
+            console.log(`🔍 [DEBUG] Longitud de respuesta:`, content?.length || 0);
+            console.log(`🔍 [DEBUG] Primeros 200 chars de respuesta:`, content?.substring(0, 200));
+
+            // Usar función de parsing robusto
+            const analysisData = parseAIResponse(content);
             
-            const transactions = parseTransactionsResponseLocal(content);
-            console.log(`Transacciones extraídas página ${pageNumber}:`, transactions);
+            console.log(`🔍 [DEBUG] Resultado del parsing página ${pageNumber}:`, analysisData);
+            console.log(`🔍 [DEBUG] Tipo de resultado:`, typeof analysisData);
+            console.log(`🔍 [DEBUG] Estructura del resultado:`, Object.keys(analysisData || {}));
             
-            return transactions;
+            // Verificar si hubo error de parsing
+            if (analysisData.error === 'JSON_PARSE_ERROR') {
+                throw new Error(`OpenAI devolvió JSON inválido: ${analysisData.message}`);
+            }
+            
+            console.log(`🔍 [DEBUG] Datos extraídos página ${pageNumber}:`, analysisData);
+            return analysisData;
+            
         } catch (error) {
-            console.error(`Error con OpenAI página ${pageNumber}:`, error);
-            return [];
+            console.error(`Error al analizar página ${pageNumber} con OpenAI:`, error);
+            throw error;
         }
     };
 
@@ -738,14 +844,66 @@ INSTRUCCIONES:
   ]
 }
 
-INSTRUCCIONES IMPORTANTES:
-- Devuelve SOLO el JSON, sin texto adicional
-- Si un campo no está visible, usa null
-- Para montos usa números decimales (ej: 1234.56, no "$1,234.56")
-- Para fechas usa formato YYYY-MM-DD
-- Los montos negativos indican pagos/créditos
-- Lee cuidadosamente todos los números y fechas
-- Busca información en toda la página, no solo en el resumen`
+INSTRUCCIONES CRÍTICAS PARA CAMPOS PRINCIPALES:
+- Para "payments": Usa el SUBTOTAL de la sección "PAGOS/CREDITOS" o "ABONOS" de la cabecera
+- Para "charges": Usa el SUBTOTAL de la sección "CONSUMOS DEL PERIODO" o "CARGOS" de la cabecera
+- Para "fees": Usa el SUBTOTAL de la sección "NOTAS DE DÉBITO" o "COMISIONES" de la cabecera
+- NO calcules estos valores sumando transacciones individuales
+- Usa los TOTALES que aparecen en los resúmenes de cabecera
+
+INSTRUCCIONES CRÍTICAS PARA TRANSACCIONES:
+- Los estados de cuenta suelen tener SECCIONES AGRUPADAS con subtotales
+- PRIMER GRUPO: "PAGOS/CREDITOS" o "SALDO ANTERIOR" al inicio
+- SEGUNDO GRUPO: Comisiones, intereses, notas de débito
+- TERCER GRUPO: Consumos/compras del período
+- DEBES extraer TODAS las transacciones de TODAS las secciones agrupadas
+- NO omitas transacciones por estar en resúmenes o subtotales
+- Busca en TODA la página, especialmente en las secciones superiores
+- Revisa también secciones de "MOVIMIENTOS DEL PERIODO" o "DETALLE DE MOVIMIENTOS"
+
+INTERPRETACIÓN CRÍTICA DE TIPOS DE OPERACIÓN:
+- **"DEV"** = DEVOLUCIÓN = tipo "pago" (crédito que reduce deuda)
+- **"CV"** = CRÉDITO = tipo "pago" (crédito que reduce deuda)
+- **"PAGO"** = PAGO = tipo "pago" (crédito que reduce deuda)
+- **"N/D"** = NOTA DE DÉBITO = tipo "cargo" (débito que aumenta deuda)
+- **"CONS."** = CONSUMO = tipo "cargo" (débito que aumenta deuda)
+- **"SALDO ANTERIOR"** = tipo "ajuste" (balance inicial)
+
+INTERPRETACIÓN CRÍTICA DE COLUMNAS DE SIGNO:
+- **Columna "+/-"**: 
+  - **"+"** = DÉBITO (aumenta deuda) = tipo "cargo"
+  - **"-"** = CRÉDITO (reduce deuda) = tipo "pago"
+  - **Vacía** = Revisar tipo de operación o descripción
+- **Columna "SIGNO"** o "INDICADOR":
+  - **"D"** = DÉBITO = tipo "cargo"
+  - **"C"** = CRÉDITO = tipo "pago"
+  - **"+"** = DÉBITO = tipo "cargo"
+  - **"-"** = CRÉDITO = tipo "pago"
+
+IMPORTANTE: El tipo de transacción debe basarse en:
+1. **PRIMERO**: El TIPO DE OPERACIÓN (DEV, CV, PAGO, N/D, CONS.)
+2. **SEGUNDO**: Las columnas de SIGNO (+/-, D/C, +, -)
+3. **TERCERO**: El monto (negativo = crédito, positivo = débito, pero no siempre)
+
+- Una transacción con tipo "DEV" siempre es un crédito, aunque el monto sea positivo
+- Una transacción con tipo "N/D" siempre es un débito, aunque el monto sea pequeño
+- Una transacción con signo "+" siempre es un débito, aunque el tipo de operación sea ambiguo
+- Una transacción con signo "-" siempre es un crédito, aunque el tipo de operación sea ambiguo
+
+PATRONES ESPECÍFICOS A BUSCAR EN TRANSACCIONES:
+- "SALDO ANTERIOR" o "BALANCE ANTERIOR" (es una transacción)
+- "PAGOS/CREDITOS" o "ABONOS" (extrae cada transacción individual)
+- "NOTAS DE DÉBITO" o "COMISIONES" (extrae cada cargo individual)
+- "CONSUMOS DEL PERIODO" o "MOVIMIENTOS" (extrae cada compra individual)
+- Transacciones con tipos como "CV", "DEV", "PAGO", "N/D", "CONS."
+
+Devuelve SOLO el JSON, sin texto adicional
+Si un campo no está visible, usa null
+Para montos usa números decimales (ej: 1234.56, no "$1,234.56")
+Para fechas usa formato YYYY-MM-DD
+Los montos negativos indican pagos/créditos
+Lee cuidadosamente todos los números y fechas
+Busca información en toda la página, no solo en el resumen`
                             },
                             {
                                 type: "image_url",
@@ -805,6 +963,21 @@ INSTRUCCIONES IMPORTANTES:
                 }
                 
                 console.log('✅ Análisis de página principal completado');
+                
+                // 🔍 [DEBUG] LOG DETALLADO DE TRANSACCIONES DE LA PRIMERA PÁGINA
+                console.log('🔍 [DEBUG] === ANÁLISIS DE PÁGINA PRINCIPAL ===');
+                console.log('🔍 [DEBUG] Tipo de análisis:', typeof analysis);
+                console.log('🔍 [DEBUG] Estructura del análisis:', Object.keys(analysis));
+                console.log('🔍 [DEBUG] Transacciones en análisis principal:', analysis.transactions);
+                console.log('🔍 [DEBUG] Cantidad de transacciones:', analysis.transactions?.length || 0);
+                
+                if (analysis.transactions && analysis.transactions.length > 0) {
+                    console.log('🔍 [DEBUG] Detalle de transacciones de la primera página:');
+                    analysis.transactions.forEach((t, i) => {
+                        console.log(`  ${i + 1}. [${t.group || 'sin grupo'}] ${t.description?.substring(0, 40)}... | ${t.amount} | ${t.type}`);
+                    });
+                }
+                
             } catch (analysisError) {
                 console.error('💥 Error en análisis principal:', analysisError);
                 
@@ -845,6 +1018,13 @@ INSTRUCCIONES IMPORTANTES:
                         const pageTransactions = await analyzePageForTransactions(images[i].data, pageNum);
                         if (pageTransactions && pageTransactions.length > 0) {
                             console.log(`✅ Página ${pageNum}: ${pageTransactions.length} transacciones encontradas`);
+                            
+                            // 🔍 [DEBUG] LOG DETALLADO DE TRANSACCIONES DE PÁGINAS ADICIONALES
+                            console.log(`🔍 [DEBUG] === TRANSACCIONES PÁGINA ${pageNum} ===`);
+                            pageTransactions.forEach((t, i) => {
+                                console.log(`  ${i + 1}. [${t.group || 'sin grupo'}] ${t.description?.substring(0, 40)}... | ${t.amount} | ${t.type}`);
+                            });
+                            
                             additionalTransactions.push(...pageTransactions);
                         } else {
                             console.log(`⚪ Página ${pageNum}: No se encontraron transacciones`);
@@ -874,6 +1054,14 @@ INSTRUCCIONES IMPORTANTES:
                     
                     analysis.transactions = [...(analysis.transactions || []), ...additionalTransactions];
                     
+                    // 🔍 [DEBUG] LOG DESPUÉS DE COMBINAR
+                    console.log('🔍 [DEBUG] === DESPUÉS DE COMBINAR ===');
+                    console.log('🔍 [DEBUG] Total de transacciones combinadas:', analysis.transactions.length);
+                    console.log('🔍 [DEBUG] Detalle de todas las transacciones combinadas:');
+                    analysis.transactions.forEach((t, i) => {
+                        console.log(`  ${i + 1}. [${t.group || 'sin grupo'}] ${t.description?.substring(0, 40)}... | ${t.amount} | ${t.type}`);
+                    });
+                    
                     // Eliminar duplicados basados en fecha y descripción
                     const beforeDedup = analysis.transactions.length;
                     analysis.transactions = analysis.transactions.filter((transaction, index, self) => 
@@ -883,6 +1071,13 @@ INSTRUCCIONES IMPORTANTES:
                     );
                     
                     console.log(`✅ Total de transacciones después de combinar y deduplicar: ${analysis.transactions.length} (antes: ${beforeDedup})`);
+                    
+                    // 🔍 [DEBUG] LOG DESPUÉS DE DEDUPLICAR
+                    console.log('🔍 [DEBUG] === DESPUÉS DE DEDUPLICAR ===');
+                    console.log('🔍 [DEBUG] Transacciones finales después de deduplicar:');
+                    analysis.transactions.forEach((t, i) => {
+                        console.log(`  ${i + 1}. [${t.group || 'sin grupo'}] ${t.description?.substring(0, 40)}... | ${t.amount} | ${t.type}`);
+                    });
                     
                     // Log detallado de pagos detectados específicamente
                     const paymentTransactions = analysis.transactions.filter(t => {
@@ -896,26 +1091,107 @@ INSTRUCCIONES IMPORTANTES:
                     console.log(`💳 PAGOS DETECTADOS POR LA IA (${paymentTransactions.length}):`);
                     paymentTransactions.forEach((payment, index) => {
                         const amount = parseFloat(payment.amount) || 0;
-                        console.log(`  ${index + 1}. ${payment.description?.substring(0, 40)}... → ${amount} | Tipo: ${payment.type}`);
+                        console.log(`  ${index + 1}. ${payment.description?.substring(0, 40)}... → ${amount} | Tipo: ${payment.type} | Grupo: ${payment.group || 'sin grupo'}`);
                     });
                 }
             }
             
             setAnalysisProgress(85);
             
-            // 5. Categorizar transacciones automáticamente
+            // 5. Categorizar transacciones automáticamente (NO BLOQUEANTE)
             if (analysis.transactions && analysis.transactions.length > 0) {
                 setExtractedText(`🔄 Categorizando ${analysis.transactions.length} transacciones con IA...`);
                 console.log('Categorizando transacciones...');
                 
-                const categorizedTransactions = await categorizeTransactions(analysis.transactions, userPatterns, userSettings);
-                analysis.transactions = categorizedTransactions;
+                // 🔍 [DEBUG] LOG ANTES DE CATEGORIZAR
+                console.log('🔍 [DEBUG] === ANTES DE CATEGORIZAR ===');
+                console.log('🔍 [DEBUG] Transacciones antes de categorizar:', analysis.transactions.length);
+                console.log('🔍 [DEBUG] Referencia de transacciones:', analysis.transactions);
+                analysis.transactions.forEach((t, i) => {
+                    console.log(`  ${i + 1}. [${t.group || 'sin grupo'}] ${t.description?.substring(0, 40)}... | ${t.amount} | ${t.type}`);
+                });
                 
-                console.log('Transacciones categorizadas:', categorizedTransactions);
+                try {
+                    // 🔍 [DEBUG] INTENTANDO CATEGORIZACIÓN
+                    console.log('🔍 [DEBUG] Iniciando categorización con IA...');
+                    const categorizedTransactions = await categorizeTransactions(analysis.transactions, userPatterns, userSettings);
+                    
+                    // 🔍 [DEBUG] LOG DESPUÉS DE CATEGORIZAR
+                    console.log('🔍 [DEBUG] === DESPUÉS DE CATEGORIZAR ===');
+                    console.log('🔍 [DEBUG] Transacciones después de categorizar:', categorizedTransactions.length);
+                    console.log('🔍 [DEBUG] Referencia de transacciones categorizadas:', categorizedTransactions);
+                    categorizedTransactions.forEach((t, i) => {
+                        console.log(`  ${i + 1}. [${t.group || 'sin grupo'}] ${t.description?.substring(0, 40)}... | ${t.amount} | ${t.type} | Categoría: ${t.category || 'sin categoría'}`);
+                    });
+                    
+                    // 🔍 [DEBUG] ASIGNANDO TRANSACCIONES CATEGORIZADAS
+                    console.log('🔍 [DEBUG] Asignando transacciones categorizadas al análisis...');
+                    analysis.transactions = categorizedTransactions;
+                    console.log('🔍 [DEBUG] Transacciones asignadas al análisis:', analysis.transactions.length);
+                    console.log('🔍 [DEBUG] Referencia final de transacciones:', analysis.transactions);
+                    
+                    console.log('✅ Transacciones categorizadas exitosamente:', categorizedTransactions);
+                    
+                } catch (categorizationError) {
+                    // 🔍 [DEBUG] ERROR EN CATEGORIZACIÓN - CONTINUAR SIN CATEGORIZAR
+                    console.error('❌ Error en categorización con IA:', categorizationError);
+                    console.warn('⚠️ Continuando sin categorización - transacciones se mantienen sin categorizar');
+                    
+                    // 🔍 [DEBUG] VERIFICAR QUE LAS TRANSACCIONES SIGUEN AQUÍ
+                    console.log('🔍 [DEBUG] === DESPUÉS DE ERROR DE CATEGORIZACIÓN ===');
+                    console.log('🔍 [DEBUG] Transacciones en análisis después del error:', analysis.transactions?.length || 0);
+                    console.log('🔍 [DEBUG] Referencia de transacciones después del error:', analysis.transactions);
+                    if (analysis.transactions && analysis.transactions.length > 0) {
+                        analysis.transactions.forEach((t, i) => {
+                            console.log(`  ${i + 1}. [${t.group || 'sin grupo'}] ${t.description?.substring(0, 40)}... | ${t.amount} | ${t.type}`);
+                        });
+                    } else {
+                        console.error('🚨 CRÍTICO: Las transacciones se perdieron después del error de categorización');
+                    }
+                    
+                    // 🔍 [DEBUG] ASIGNAR CATEGORÍA "other" A TODAS LAS TRANSACCIONES
+                    console.log('🔍 [DEBUG] Asignando categoría "other" a todas las transacciones...');
+                    analysis.transactions = analysis.transactions.map(transaction => ({
+                        ...transaction,
+                        category: 'other',
+                        categoryConfidence: 'low',
+                        categoryMethod: 'fallback',
+                        categoryPatternId: null,
+                        categoryData: null
+                    }));
+                    
+                    console.log('🔍 [DEBUG] Transacciones con categoría fallback:', analysis.transactions.length);
+                }
             }
             
             setAnalysisProgress(100);
             setExtractedText(`✅ Análisis completado con IA. ${images.length} página(s) procesada(s). ${analysis.transactions?.length || 0} transacciones categorizadas.`);
+            
+            // 🔍 [DEBUG] LOG FINAL DEL ANÁLISIS
+            console.log('🔍 [DEBUG] === RESULTADO FINAL DEL ANÁLISIS ===');
+            console.log('🔍 [DEBUG] Total de transacciones finales:', analysis.transactions?.length || 0);
+            console.log('🔍 [DEBUG] Referencia final de transacciones:', analysis.transactions);
+            console.log('🔍 [DEBUG] Tipo de transacciones:', typeof analysis.transactions);
+            console.log('🔍 [DEBUG] Es array:', Array.isArray(analysis.transactions));
+            if (analysis.transactions && analysis.transactions.length > 0) {
+                console.log('🔍 [DEBUG] Transacciones finales:');
+                analysis.transactions.forEach((t, i) => {
+                    console.log(`  ${i + 1}. [${t.group || 'sin grupo'}] ${t.description?.substring(0, 40)}... | ${t.amount} | ${t.type} | Categoría: ${t.category || 'sin categoría'}`);
+                });
+            } else {
+                console.log('  ⚠️ No hay transacciones en el resultado final');
+            }
+            
+            // 🔍 [DEBUG] VERIFICACIÓN FINAL DE INTEGRIDAD
+            console.log('🔍 [DEBUG] === VERIFICACIÓN FINAL DE INTEGRIDAD ===');
+            console.log('🔍 [DEBUG] Estado del objeto analysis:', {
+                hasTransactions: !!analysis.transactions,
+                transactionsType: typeof analysis.transactions,
+                transactionsLength: analysis.transactions?.length || 0,
+                isArray: Array.isArray(analysis.transactions),
+                keys: Object.keys(analysis),
+                hasError: !!analysis.error
+            });
             
             return analysis;
             
@@ -926,17 +1202,38 @@ INSTRUCCIONES IMPORTANTES:
         }
     };
 
-    const saveStatementData = async (analysisData, skipCardValidation = false) => {
+    const saveStatementData = async (analysisData, skipCardValidation = false, explicitCardId = null) => {
         try {
             console.log('🚀 === INICIANDO GUARDADO DE ESTADO DE CUENTA ===');
             console.log('📥 Datos recibidos para guardar:', analysisData);
             console.log('selectedCard ID:', selectedCard);
+            console.log('explicitCardId:', explicitCardId);
             console.log('cards array length:', cards.length);
             console.log('cards:', cards.map(c => ({ id: c.id, name: c.name })));
             
-            // Buscar la tarjeta seleccionada
-            let selectedCardData = cards.find(card => card.id === selectedCard);
-            console.log('selectedCardData encontrada:', selectedCardData);
+            // 🔍 [DEBUG] LOG DE TRANSACCIONES ANTES DEL GUARDADO
+            console.log('🔍 [DEBUG] === GUARDADO - TRANSACCIONES RECIBIDAS ===');
+            console.log('🔍 [DEBUG] Tipo de analysisData:', typeof analysisData);
+            console.log('🔍 [DEBUG] Estructura de analysisData:', Object.keys(analysisData));
+            console.log('🔍 [DEBUG] Transacciones en analysisData:', analysisData.transactions);
+            console.log('🔍 [DEBUG] Cantidad de transacciones:', analysisData.transactions?.length || 0);
+            
+            if (analysisData.transactions && analysisData.transactions.length > 0) {
+                console.log('🔍 [DEBUG] Detalle de transacciones antes del guardado:');
+                analysisData.transactions.forEach((t, i) => {
+                    console.log(`  ${i + 1}. [${t.group || 'sin grupo'}] ${t.description?.substring(0, 40)}... | ${t.amount} | ${t.type}`);
+                });
+            }
+            
+            // Buscar la tarjeta seleccionada (priorizar explicitCardId si se proporciona)
+            let selectedCardData = null;
+            if (explicitCardId) {
+                selectedCardData = cards.find(card => card.id === explicitCardId);
+                console.log('selectedCardData encontrada por explicitCardId:', selectedCardData);
+            } else {
+                selectedCardData = cards.find(card => card.id === selectedCard);
+                console.log('selectedCardData encontrada por selectedCard:', selectedCardData);
+            }
             
             // Si no existe la tarjeta y no estamos omitiendo validación, usar lógica inteligente para detectar duplicados
             if (!selectedCardData && !skipCardValidation) {
@@ -991,6 +1288,14 @@ INSTRUCCIONES IMPORTANTES:
             // Encriptar transacciones antes de guardar
             if (analysisData.transactions && Array.isArray(analysisData.transactions)) {
                 console.log('🔐 Encriptando transacciones...');
+                
+                // 🔍 [DEBUG] LOG ANTES DE ENCRIPTAR
+                console.log('🔍 [DEBUG] === GUARDADO - ANTES DE ENCRIPTAR ===');
+                console.log('🔍 [DEBUG] Transacciones a encriptar:', analysisData.transactions.length);
+                analysisData.transactions.forEach((t, i) => {
+                    console.log(`  ${i + 1}. [${t.group || 'sin grupo'}] ${t.description?.substring(0, 40)}... | ${t.amount} | ${t.type}`);
+                });
+                
                 const encryptedTransactions = await Promise.all(
                     analysisData.transactions.map(async (transaction) => ({
                         ...transaction,
@@ -998,10 +1303,31 @@ INSTRUCCIONES IMPORTANTES:
                     }))
                 );
                 statementData.transactions = encryptedTransactions;
+                
+                // 🔍 [DEBUG] LOG DESPUÉS DE ENCRIPTAR
+                console.log('🔍 [DEBUG] === GUARDADO - DESPUÉS DE ENCRIPTAR ===');
+                console.log('🔍 [DEBUG] Transacciones encriptadas:', encryptedTransactions.length);
+                encryptedTransactions.forEach((t, i) => {
+                    console.log(`  ${i + 1}. [${t.group || 'sin grupo'}] ${t.description?.substring(0, 40)}... | ${t.amount} | ${t.type}`);
+                });
+                
                 console.log('✅ Transacciones encriptadas:', encryptedTransactions.length);
+            } else {
+                console.log('⚠️ No hay transacciones para encriptar o no es un array válido');
+                console.log('🔍 [DEBUG] Tipo de transactions:', typeof analysisData.transactions);
+                console.log('🔍 [DEBUG] Valor de transactions:', analysisData.transactions);
             }
 
             console.log('Datos finales a guardar:', statementData);
+            
+            // 🔍 [DEBUG] LOG FINAL ANTES DEL GUARDADO
+            console.log('🔍 [DEBUG] === GUARDADO - DATOS FINALES ===');
+            console.log('🔍 [DEBUG] Transacciones en statementData:', statementData.transactions?.length || 0);
+            if (statementData.transactions && statementData.transactions.length > 0) {
+                statementData.transactions.forEach((t, i) => {
+                    console.log(`  ${i + 1}. [${t.group || 'sin grupo'}] ${t.description?.substring(0, 40)}... | ${t.amount} | ${t.type}`);
+                });
+            }
 
             console.log('💾 Guardando en path: artifacts/${appId}/users/${user.uid}/statements');
             
@@ -1281,6 +1607,20 @@ INSTRUCCIONES IMPORTANTES:
         
         if (!result) return result;
         
+        // 🔍 [DEBUG] LOG DEL RESULTADO ORIGINAL
+        console.log('🔍 [DEBUG] === ENRIQUECIMIENTO - RESULTADO ORIGINAL ===');
+        console.log('🔍 [DEBUG] Tipo de resultado:', typeof result);
+        console.log('🔍 [DEBUG] Estructura del resultado:', Object.keys(result));
+        console.log('🔍 [DEBUG] Transacciones originales:', result.transactions);
+        console.log('🔍 [DEBUG] Cantidad de transacciones originales:', result.transactions?.length || 0);
+        
+        if (result.transactions && result.transactions.length > 0) {
+            console.log('🔍 [DEBUG] Detalle de transacciones originales:');
+            result.transactions.forEach((t, i) => {
+                console.log(`  ${i + 1}. [${t.group || 'sin grupo'}] ${t.description?.substring(0, 40)}... | ${t.amount} | ${t.type}`);
+            });
+        }
+        
         const enriched = { ...result };
         
         // Si no hay saldo anterior pero sí hay transacciones, intentar extraerlo
@@ -1294,6 +1634,18 @@ INSTRUCCIONES IMPORTANTES:
                 enriched.previousBalance = extractedPreviousBalance;
                 console.log('✅ Saldo anterior extraído de transacciones:', extractedPreviousBalance);
             }
+        }
+        
+        // 🔍 [DEBUG] LOG DEL RESULTADO ENRIQUECIDO
+        console.log('🔍 [DEBUG] === ENRIQUECIMIENTO - RESULTADO FINAL ===');
+        console.log('🔍 [DEBUG] Transacciones enriquecidas:', enriched.transactions);
+        console.log('🔍 [DEBUG] Cantidad de transacciones enriquecidas:', enriched.transactions?.length || 0);
+        
+        if (enriched.transactions && enriched.transactions.length > 0) {
+            console.log('🔍 [DEBUG] Detalle de transacciones enriquecidas:');
+            enriched.transactions.forEach((t, i) => {
+                console.log(`  ${i + 1}. [${t.group || 'sin grupo'}] ${t.description?.substring(0, 40)}... | ${t.amount} | ${t.type}`);
+            });
         }
         
         console.log('📊 Resultado enriquecido:', {
@@ -1392,11 +1744,8 @@ INSTRUCCIONES IMPORTANTES:
                 // Recargar tarjetas para incluir la nueva
                 await loadCards();
                 
-                // Continuar con el guardado del statement
-                setSelectedCard(newCard.id);
-                setTimeout(async () => {
-                    await saveStatementData(pendingAnalysis, true); // Skip card validation
-                }, 100);
+                // Continuar con el guardado del statement usando la nueva tarjeta directamente
+                await saveStatementData(pendingAnalysis, false, newCard.id);
                 
                 showNotification(
                     'success',
@@ -1432,13 +1781,14 @@ INSTRUCCIONES IMPORTANTES:
                 pendingAnalysis: null
             });
             
-            // Usar la tarjeta existente
+            // Usar la tarjeta existente y esperar a que se actualice el estado
             setSelectedCard(existingCard.id);
             
-            // Continuar con el guardado del statement
-            setTimeout(async () => {
-                await saveStatementData(pendingAnalysis, true); // Skip card validation
-            }, 100);
+            // Esperar a que el estado se actualice antes de continuar
+            await new Promise(resolve => setTimeout(resolve, 200));
+            
+            // Continuar con el guardado del statement usando la tarjeta existente directamente
+            await saveStatementData(pendingAnalysis, false, existingCard.id);
             
             showNotification(
                 'success',
