@@ -5,9 +5,12 @@ import { decryptText, encryptText } from '../utils/crypto';
 import { loadUserCategoryPatterns, saveUserCategoryPattern } from '../utils/userCategoryPatterns';
 import { TRANSACTION_CATEGORIES } from '../utils/transactionCategories';
 import CategoryCorrectionModal from './CategoryCorrectionModal';
+import StatementDeleteModal from './StatementDeleteModal';
+import useTheme from '../hooks/useTheme';
 
 const StatementsView = ({ db, user, appId }) => {
     const { t } = useTranslation();
+    const { currentTheme } = useTheme();
     const [statements, setStatements] = useState([]);
     const [cards, setCards] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -18,6 +21,8 @@ const StatementsView = ({ db, user, appId }) => {
         transaction: null,
         statementId: null
     });
+    const [showDeleteModal, setShowDeleteModal] = useState(false);
+    const [statementToDelete, setStatementToDelete] = useState(null);
 
     useEffect(() => {
         if (db && user && appId) {
@@ -207,21 +212,41 @@ const StatementsView = ({ db, user, appId }) => {
         }
     };
 
-    const deleteStatement = async (statementId) => {
+    const handleDelete = (statement) => {
+        // Preparar datos para el modal
+        const card = cards.find(c => c.id === statement.cardId);
+        const statementWithCardInfo = {
+            ...statement,
+            cardName: card ? `${card.name} - ${card.bank}` : 'Tarjeta no encontrada'
+        };
+        
+        setStatementToDelete(statementWithCardInfo);
+        setShowDeleteModal(true);
+    };
+
+    const confirmDelete = async () => {
+        if (!statementToDelete) return;
+        
         try {
-            if (!confirm('¿Estás seguro de que quieres eliminar este estado de cuenta?')) {
-                return;
-            }
+            await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'statements', statementToDelete.id));
+            setStatements(statements.filter(s => s.id !== statementToDelete.id));
             
-            await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'statements', statementId));
-            setStatements(statements.filter(s => s.id !== statementId));
-            
-            if (selectedStatement?.id === statementId) {
+            if (selectedStatement?.id === statementToDelete.id) {
                 setSelectedStatement(null);
             }
+            
+            // Cerrar el modal
+            setShowDeleteModal(false);
+            setStatementToDelete(null);
         } catch (error) {
             console.error('Error eliminando estado de cuenta:', error);
+            alert(t('statements.deleteError'));
         }
+    };
+
+    const closeDeleteModal = () => {
+        setShowDeleteModal(false);
+        setStatementToDelete(null);
     };
 
     const handleCategoryCorrection = (transaction, statementId) => {
@@ -485,7 +510,7 @@ const StatementsView = ({ db, user, appId }) => {
                                             </div>
                                         </div>
                                         <button
-                                            onClick={() => deleteStatement(selectedStatement.id)}
+                                            onClick={() => handleDelete(selectedStatement)}
                                             className="px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors flex items-center space-x-2"
                                             title="Eliminar estado de cuenta"
                                         >
@@ -712,6 +737,15 @@ const StatementsView = ({ db, user, appId }) => {
                 user={user}
                 appId={appId}
                 onCorrectionSaved={handleCorrectionSaved}
+            />
+            
+            {/* Modal de confirmación de eliminación */}
+            <StatementDeleteModal
+                isOpen={showDeleteModal}
+                onClose={closeDeleteModal}
+                onConfirm={confirmDelete}
+                statement={statementToDelete}
+                currentTheme={currentTheme}
             />
         </div>
     );

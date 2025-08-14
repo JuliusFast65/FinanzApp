@@ -17,7 +17,7 @@ export const loadUserSettings = async (db, userId, appId) => {
         
         if (docSnap.exists()) {
             const settings = { ...DEFAULT_USER_SETTINGS, ...docSnap.data() };
-            console.log('Configuraciones de usuario cargadas:', settings);
+            console.log('Configuraciones de los Settings del usuario cargadas:', settings);
             return settings;
         } else {
             console.log('No se encontraron configuraciones, usando por defecto');
@@ -35,20 +35,27 @@ export const useUserSettings = (db, user, appId) => {
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
+        console.log('🔍 [DEBUG] useUserSettings useEffect ejecutado:', { db: !!db, user: !!user, appId });
+        
         if (db && user && appId) {
+            console.log('🔍 [DEBUG] Cargando configuraciones para usuario:', user.uid);
             loadUserSettings(db, user.uid, appId)
                 .then(userSettings => {
+                    console.log('✅ [DEBUG] Configuraciones cargadas:', userSettings);
                     setSettings(userSettings);
                     setIsLoading(false);
                 })
                 .catch(error => {
-                    console.error('Error en useUserSettings:', error);
+                    console.error('❌ [DEBUG] Error en useUserSettings:', error);
                     setSettings(DEFAULT_USER_SETTINGS);
                     setIsLoading(false);
                 });
+        } else {
+            console.log('⚠️ [DEBUG] useUserSettings: faltan parámetros:', { db: !!db, user: !!user, appId });
         }
-    }, [db, user, appId]);
+    }, [db, user?.uid, appId]);
 
+    console.log('🔍 [DEBUG] useUserSettings retornando:', { settings, isLoading });
     return { settings, isLoading };
 };
 

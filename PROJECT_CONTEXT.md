@@ -1,30 +1,34 @@
-# Contexto del Proyecto: Introspect - Diario Personal
+# Contexto del Proyecto: FinanzApp - Control Total de tus Finanzas
 
 ## 📋 Información General
 
-**Nombre del Proyecto:** Introspect - Tu Diario Personal  
-**Versión:** 1.72.0  
-**Tecnologías:** React 19, Vite, Firebase, Tailwind CSS  
-**Tipo:** PWA (Progressive Web App) con funcionalidades premium
+**Nombre del Proyecto:** FinanzApp - Control Total de tus Finanzas  
+**Versión:** 1.0.0  
+**Tecnologías:** React 19, Vite, Firebase, Tailwind CSS, Recharts  
+**Tipo:** PWA (Progressive Web App) para gestión financiera personal
 
 ## 🎯 Propósito
 
-Aplicación de diario personal que permite a los usuarios:
-- Escribir entradas de diario con encriptación
-- Definir y rastrear actividades/hábitos
-- Analizar patrones de comportamiento
-- Acceder a funcionalidades premium como IA y análisis avanzado
+Aplicación de finanzas personales moderna y segura que permite a los usuarios:
+- Gestionar tarjetas de crédito con encriptación de datos sensibles
+- Cargar y analizar automáticamente estados de cuenta en PDF
+- Visualizar métricas financieras en tiempo real
+- Rastrear saldos, límites y utilización de crédito
+- Analizar patrones de gastos y transacciones
 
 ## 🏗️ Arquitectura del Proyecto
 
 ### Estructura de Directorios
 ```
-mi-diario/
+finanzapp/
 ├── src/
-│   ├── components/          # Componentes React
+│   ├── components/          # Componentes React principales
 │   ├── hooks/              # Custom hooks
-│   ├── utils/              # Utilidades (crypto, payment)
+│   ├── utils/              # Utilidades (crypto, PDF parsing)
 │   ├── firebase/           # Configuración Firebase
+│   ├── i18n/               # Internacionalización
+│   ├── config/             # Configuración centralizada
+│   ├── assets/             # Recursos estáticos
 │   ├── App.jsx            # Componente principal
 │   └── main.jsx           # Punto de entrada
 ├── public/                # Archivos estáticos y PWA
@@ -36,37 +40,45 @@ mi-diario/
 - **Frontend:** React 19 + Vite
 - **Styling:** Tailwind CSS + Google Fonts
 - **Backend:** Firebase (Auth, Firestore)
-- **Pagos:** Stripe
+- **Gráficos:** Recharts para visualizaciones
+- **PDFs:** PDF.js + pdf-parse para análisis
 - **PWA:** Service Worker + Manifest
-- **Encriptación:** Crypto.js
+- **Encriptación:** Crypto.js para datos sensibles
+- **Internacionalización:** i18next para múltiples idiomas
 
 ## 🔐 Sistema de Autenticación
 
 - **Proveedor:** Google Auth (Firebase)
 - **Almacenamiento:** Firestore con estructura de usuarios
-- **Encriptación:** Texto encriptado con clave del usuario
+- **Seguridad:** Encriptación de datos sensibles con clave del usuario
+- **Autenticación de dos factores:** Implementada para usuarios premium
 
-## 💰 Modelo de Suscripción
+## 💳 Funcionalidades Principales
 
-### Plan Gratuito (Free)
-- ✅ Entradas de diario ilimitadas
-- ✅ Definir actividades ilimitadas
-- ✅ Rastrear hasta 3 actividades por día
-- ✅ Actividades simples (1 punto por actividad)
-- ✅ Exportar/Importar entradas
-- ✅ Estadísticas básicas
+### Gestión de Tarjetas de Crédito
+- ✅ Agregar, editar y eliminar tarjetas de crédito
+- ✅ Encriptación de datos sensibles (números, CVV)
+- ✅ Seguimiento de límites, saldos y crédito disponible
+- ✅ Fechas de vencimiento y cierre de cuenta
+- ✅ Cálculo automático de utilización de crédito
+- ✅ Categorización por banco y tipo de tarjeta
 
-### Plan Premium
-- ✅ Todo del plan gratuito
-- ✅ Rastrear actividades ilimitadas por día
-- ✅ Subniveles de actividades con puntos personalizados
-- ✅ Metas y objetivos configurables
-- ✅ Chat con IA terapéutica
-- ✅ Asistente de escritura
-- ✅ Análisis de comportamiento avanzado
-- ✅ Autenticación de dos factores
-- ✅ Estadísticas avanzadas
-- ✅ Personalización de IA (estilos terapéuticos, asistentes de escritura, tonos motivacionales)
+### Análisis de Estados de Cuenta
+- ✅ Carga y análisis automático de PDFs
+- ✅ Extracción inteligente de información financiera
+- ✅ Detección de saldos, pagos mínimos y fechas de vencimiento
+- ✅ Análisis de transacciones y cargos
+- ✅ Categorización automática de transacciones
+- ✅ Corrección manual de categorías
+- ✅ Almacenamiento seguro en la nube
+
+### Dashboard Financiero
+- ✅ Métricas clave en tiempo real
+- ✅ Gráficos de utilización por tarjeta
+- ✅ Evolución temporal de saldos
+- ✅ Distribución por banco
+- ✅ Alertas de próximos vencimientos
+- ✅ Estadísticas de gastos por categoría
 
 ## 📊 Estructura de Datos
 
@@ -74,86 +86,93 @@ mi-diario/
 ```
 artifacts/{appId}/
 ├── users/{userId}/
-│   ├── entries/{date}          # Entradas del diario
-│   ├── activities/{activityId} # Actividades definidas
-│   └── subscription            # Estado de suscripción
+│   ├── creditCards/{cardId}      # Tarjetas de crédito
+│   ├── statements/{statementId}   # Estados de cuenta
+│   ├── transactions/{transactionId} # Transacciones
+│   ├── profile                    # Perfil del usuario
+│   └── security                   # Configuración de seguridad
 ```
 
-### Entrada de Diario
+### Tarjeta de Crédito
 ```javascript
 {
-  title: "string (encriptado)",
-  text: "string (encriptado)",
-  tracked: {
-    activityId: "selectedOption"
-  },
-  createdAt: "timestamp"
+  name: "string (encriptado)",
+  number: "string (encriptado)",
+  cvv: "string (encriptado)",
+  expiryDate: "string",
+  creditLimit: number,
+  currentBalance: number,
+  bank: "string",
+  closingDate: "string",
+  dueDate: "string",
+  createdAt: "timestamp",
+  updatedAt: "timestamp"
 }
 ```
 
-### Actividad
+### Estado de Cuenta
 ```javascript
 {
-  name: "string",
-  options: ["array"],           // Solo premium
-  points: {option: points},     // Solo premium
-  goal: {                       // Solo premium
-    type: "weekly|monthly|custom",
-    target: number,
-    startDate: "date",
-    endDate: "date"
-  },
-  isSimple: boolean,            // Para usuarios gratuitos
-  originalOptions: ["array"],   // Datos preservados para free
-  originalPoints: object        // Datos preservados para free
+  fileName: "string",
+  uploadDate: "timestamp",
+  statementDate: "string",
+  cardId: "string",
+  openingBalance: number,
+  closingBalance: number,
+  minimumPayment: number,
+  dueDate: "string",
+  transactions: ["array"],
+  analyzed: boolean,
+  categories: ["array"]
 }
 ```
 
 ## 🎨 Componentes Principales
 
 ### Core Components
-- `DiaryEntryEditor` - Editor principal del diario
-- `ActivityTrackerItem` - Rastreador de actividades
-- `CreateActivityModal` - Crear/editar actividades
-- `StatisticsPanel` - Panel de estadísticas
-- `BasicWritingAssistant` - Asistente de escritura básico con sugerencias inteligentes
+- `CreditCardManager` - Gestión completa de tarjetas de crédito
+- `PDFStatementAnalyzer` - Análisis automático de PDFs
+- `FinanceDashboard` - Dashboard principal con métricas
+- `StatementsView` - Vista y gestión de estados de cuenta
+- `UserProfile` - Perfil y configuración del usuario
 
-### Premium Components
-- `TherapistChat` - Chat con IA terapéutica
-- `WritingAssistant` - Asistente de escritura
-- `BehaviorAnalysis` - Análisis de comportamiento
+### Security Components
+- `SecuritySettings` - Configuración de seguridad
+- `AppLock` - Bloqueo de aplicación
 - `TwoFactorAuth` - Autenticación de dos factores
-- `SubscriptionModal` - Gestión de suscripciones
+- `DeleteConfirmModal` - Confirmaciones de eliminación
 
 ### Utility Components
-- `ArchiveView` - Vista de archivo
-- `ExportModal` - Exportar entradas
-- `ImportModal` - Importar entradas
-- `Onboarding` - Tutorial inicial
+- `InstallPWA` - Instalación de la aplicación
+- `LanguageSelector` - Selector de idioma
+- `UpdateNotification` - Notificaciones de actualización
+- `StatisticsPanel` - Panel de estadísticas avanzadas
 
 ## 🔧 Hooks Personalizados
 
-### `useActivities`
-- Gestión de actividades del usuario
-- Lógica de plan gratuito vs premium
-- CRUD de actividades y opciones
+### `useCreditCards`
+- Gestión de tarjetas de crédito del usuario
+- CRUD de tarjetas con encriptación
+- Cálculo de métricas financieras
 
-### `useDiary`
-- Gestión de entradas del diario
-- Encriptación/desencriptación
-- Carga y guardado de entradas
+### `useStatements`
+- Gestión de estados de cuenta
+- Análisis de PDFs y extracción de datos
+- Categorización de transacciones
 
-### `useSubscription`
-- Estado de suscripción del usuario
-- Verificación de características premium
-- Integración con Stripe
+### `useFirebase`
+- Configuración y conexión con Firebase
+- Autenticación y gestión de usuarios
+- Operaciones de base de datos
 
 ## 🔒 Seguridad y Privacidad
 
-- **Encriptación:** Todo el texto del usuario está encriptado
+- **Encriptación:** Datos sensibles encriptados end-to-end
 - **Clave:** Derivada del UID del usuario
 - **Almacenamiento:** Solo datos encriptados en Firestore
 - **Autenticación:** Google OAuth con Firebase
+- **2FA:** Autenticación de dos factores opcional
+- **Bloqueo de App:** Protección con PIN o biométricos
 
 ## 📱 PWA (Progressive Web App)
 
@@ -182,14 +201,6 @@ Para que el navegador muestre el prompt de instalación, la app debe cumplir:
 - ✅ **Meta tags PWA**: Para todos los navegadores
 - ✅ **Display standalone**: Se abre como app nativa
 
-#### Versiones y Actualizaciones
-- **`package.json`**: Versión del proyecto (1.72.0)
-- **`src/config/version.js`**: Versión centralizada de la aplicación (1.72)
-- **`APP_VERSION`**: Versión visible al usuario (1.72) - Importada desde config/version.js
-- **`SW_VERSION`**: Versión del Service Worker (2.0.221)
-
-El script `prebuild` actualiza automáticamente la versión del Service Worker cuando cambia la versión en `package.json`.
-
 #### Sistema de Versiones Centralizado
 Para evitar duplicaciones y mantener consistencia, la versión se define en un solo lugar:
 - **`src/config/version.js`**: Archivo centralizado con todas las versiones
@@ -199,68 +210,18 @@ Para evitar duplicaciones y mantener consistencia, la versión se define en un s
   - Fácil actualización (solo cambiar en un lugar)
   - Evita inconsistencias entre archivos
 
-## 🎯 Funcionalidades Clave
+## 🌍 Internacionalización
 
-### Sistema de Actividades
-- **Gratuito:** Actividades simples (sí/no, 1 punto)
-- **Premium:** Subniveles con puntos personalizados
-- **Metas:** Objetivos configurables (solo premium)
+### Sistema i18n
+- **Framework:** i18next + react-i18next
+- **Idiomas:** Español (por defecto), Inglés
+- **Detección automática:** Detecta el idioma del navegador
+- **Cambio manual:** Selector de idioma en el perfil
 
-### Análisis y Estadísticas
-- **Gratuito:** Estadísticas básicas de actividades
-- **Premium:** Análisis avanzado de patrones
-
-### IA y Asistencia
-- **Chat Terapéutico:** IA para apoyo emocional con estilos personalizables
-- **Asistente de Escritura Básico:** 
-  - **Entradas vacías:** Sugerencias motivadoras para comenzar a escribir, preguntas reflexivas, temas de escritura y técnicas para superar el bloqueo
-  - **Entradas con contenido:** Mejora gramática, ortografía y flujo del texto
-  - **Estilos personalizables:** Adapta sugerencias según el estilo preferido del usuario
-- **Asistente de Escritura Avanzado:** Funcionalidades premium de escritura con personalización
-- **Análisis de Comportamiento:** Patrones y insights
-- **Reflexión Terapéutica:** Análisis de entradas con estilo terapéutico personalizable
-- **Mensajes Inspiracionales:** Generación de mensajes motivacionales con tonos personalizables
-
-### 🤖 Personalización de IA (Premium)
-
-El sistema de IA personalizable permite a los usuarios adaptar la experiencia de IA según sus preferencias personales:
-
-#### **Estilos Terapéuticos** (`therapistStyle`)
-- **Empático:** Enfoque cálido y comprensivo, prioriza la validación emocional
-- **Directo:** Comunicación clara y orientada a soluciones prácticas
-- **Analítico:** Análisis profundo de patrones y comportamientos
-- **Mindfulness:** Enfoque en presencia, respiración y conciencia plena
-- **Cognitivo:** Trabajo con pensamientos, creencias y reestructuración cognitiva
-- **Sistémico:** Considera el contexto familiar y relacional
-- **Humanista:** Enfoque en el crecimiento personal y la autorrealización
-
-#### **Estilos de Asistente de Escritura** (`writingAssistantStyle`)
-- **Creativo:** Sugerencias artísticas y expresivas, fomenta la creatividad
-- **Estructurado:** Enfoque organizado y metódico, mejora la claridad
-- **Emocional:** Prioriza la expresión de sentimientos y experiencias personales
-- **Analítico:** Análisis reflexivo y pensamiento crítico
-- **Narrativo:** Desarrollo de historias y secuencias temporales
-- **Descriptivo:** Enfoque en detalles sensoriales y observaciones
-- **Filosófico:** Reflexiones profundas y contemplativas
-
-#### **Tonos Motivacionales** (`motivationalTone`)
-- **Espiritual:** Sabiduría trascendental y conexión con lo divino
-- **Filosófico:** Reflexión profunda y pensamiento crítico
-- **Motivacional:** Energía y empuje para la acción
-- **Mindfulness:** Presencia y conciencia del momento actual
-- **Científico:** Enfoque racional y basado en evidencia
-- **Poético:** Belleza artística y expresión creativa
-- **Práctico:** Consejos aplicables y orientados a resultados
-
-#### **Componentes que Utilizan la Personalización**
-- **`AdvancedIntrospectiveAssistant`:** Adapta el estilo terapéutico del chat
-- **`TherapistReflection`:** Personaliza el análisis de entradas
-- **`BasicWritingAssistant`:** Ajusta sugerencias según el estilo de escritura
-- **`WritingAssistant`:** Personaliza prompts y sugerencias avanzadas
-- **`handleInspirationalMessage`:** Genera mensajes con el tono motivacional preferido
-
-#### **Almacenamiento de Preferencias**
-Las preferencias se almacenan en el perfil del usuario en Firestore y se pasan como props a todos los componentes de IA para asegurar consistencia en la experiencia del usuario.
+### Archivos de Traducción
+- **`src/i18n/locales/es.json`**: Traducciones en español
+- **`src/i18n/locales/en.json`**: Traducciones en inglés
+- **Configuración:** `src/i18n/index.js`
 
 ## 🚀 Scripts Disponibles
 
@@ -282,60 +243,6 @@ Para mantener la consistencia y asegurar despliegues exitosos, seguir este orden
 4. **Despliegue** → `firebase deploy`
 5. **Commit** → `git add . && git commit -m "mensaje"`
 6. **Push** → `git push`
-
-### ¿Por qué este orden?
-
-#### 1. **Incremento de Versión Primero**
-- Actualiza la versión antes de cualquier build
-- Asegura que el Service Worker se actualice con la nueva versión
-- Mantiene sincronizados `package.json` y `src/config/version.js`
-- Facilita el seguimiento de cambios en producción
-
-#### 2. **Build Después del Incremento**
-- Verifica que el código compile sin errores
-- Actualiza automáticamente el Service Worker con la nueva versión
-- Genera los archivos optimizados para producción
-- Detecta problemas antes del despliegue
-
-#### 3. **Despliegue Antes del Commit**
-- Asegura que los cambios funcionen en producción
-- Permite probar la app desplegada antes de guardar en git
-- Si hay problemas, se pueden corregir antes del commit
-- Evita commits con código que no funciona en producción
-
-#### 4. **Commit Final**
-- Solo se hace commit del código que ya está funcionando
-- El historial de git refleja el estado real de producción
-- Facilita el rollback si es necesario
-
-#### 5. **Push al Repositorio**
-- Sincroniza los cambios con el repositorio remoto
-- Permite colaboración en equipo
-- Crea backup del código en la nube
-- Facilita el deployment en otros entornos
-
-### Comandos del Flujo
-```bash
-# 1. Desarrollo (en paralelo)
-npm run dev
-
-# 2. Incremento de versión
-# - Actualizar "version" en package.json (ej: "1.68.0")
-# - Actualizar APP_VERSION en src/config/version.js (ej: '1.68')
-
-# 3. Build y verificación
-npm run build
-
-# 4. Despliegue a Firebase
-firebase deploy
-
-# 5. Commit de cambios
-git add .
-git commit -m "feat: descripción de cambios"
-
-# 6. Push al repositorio
-git push
-```
 
 ### Scripts Automatizados
 - **`prebuild`**: Actualiza automáticamente la versión del Service Worker
@@ -361,90 +268,80 @@ VITE_FIREBASE_APP_ID=
 
 ## 📈 Estado Actual del Proyecto
 
-- ✅ Sistema de autenticación completo
-- ✅ Editor de diario funcional
-- ✅ Sistema de actividades con límites
-- ✅ Funcionalidades premium implementadas
+- ✅ Sistema de autenticación completo con Google OAuth
+- ✅ Gestión completa de tarjetas de crédito
+- ✅ Análisis automático de PDFs de estados de cuenta
+- ✅ Dashboard financiero con métricas en tiempo real
+- ✅ Sistema de categorización de transacciones
 - ✅ PWA completamente funcional
-- ✅ Sistema de suscripciones con Stripe
-- ✅ Encriptación de datos
-- ✅ Export/Import de entradas
-- ✅ Asistente de escritura básico mejorado con sugerencias inteligentes
+- ✅ Encriptación de datos sensibles
+- ✅ Autenticación de dos factores
+- ✅ Sistema de internacionalización (español/inglés)
+- ✅ Bloqueo de aplicación con PIN
+- ✅ Estadísticas avanzadas y gráficos
 
 ## 🎨 UI/UX
 
-- **Diseño:** Moderno y minimalista
-- **Tema:** Dark mode por defecto
-- **Fuentes:** Google Fonts (Patrick Hand, Caveat, etc.)
-- **Responsive:** Mobile-first design
+- **Diseño:** Moderno y profesional con enfoque financiero
+- **Tema:** Dark mode por defecto con acentos verdes
+- **Fuentes:** Google Fonts optimizadas para legibilidad
+- **Responsive:** Mobile-first design con adaptación a desktop
 - **Accesibilidad:** Navegación por teclado y lectores de pantalla
+- **Gráficos:** Visualizaciones interactivas con Recharts
 
 ## 🔄 Flujo de Usuario
 
-1. **Onboarding:** Tutorial inicial para nuevos usuarios
-2. **Definir Actividades:** Configurar hábitos a rastrear
-3. **Escribir Diario:** Entradas diarias con texto encriptado
-4. **Rastrear Actividades:** Registrar progreso de hábitos
-5. **Analizar:** Ver estadísticas y patrones
-6. **Premium:** Desbloquear funcionalidades avanzadas
+1. **Onboarding:** Login con Google y configuración inicial
+2. **Gestión de Tarjetas:** Agregar y configurar tarjetas de crédito
+3. **Análisis de PDFs:** Cargar estados de cuenta para análisis automático
+4. **Revisión y Corrección:** Verificar y corregir categorías de transacciones
+5. **Dashboard:** Visualizar métricas y estadísticas financieras
+6. **Configuración:** Personalizar seguridad y preferencias
 
 ## 📝 Notas de Desarrollo
 
 - El proyecto usa React 19 con las últimas características
 - Implementación de PWA con Service Worker
-- Sistema de suscripciones integrado con Stripe
-- Encriptación end-to-end para privacidad del usuario
+- Sistema de encriptación end-to-end para datos sensibles
+- Análisis inteligente de PDFs con extracción de datos
 - Arquitectura modular con hooks personalizados
 - Soporte completo para modo offline
+- Sistema de internacionalización completo
 
-## 🆕 Mejoras Recientes
+## 🆕 Funcionalidades Recientes
 
-### Sistema de Personalización de IA (Diciembre 2024)
-Implementación completa de personalización de IA que permite a los usuarios adaptar todas las funcionalidades de IA según sus preferencias personales:
+### Sistema de Categorización Inteligente (Diciembre 2024)
+Implementación de categorización automática de transacciones con corrección manual:
 
 #### **Características Implementadas:**
-- **3 Tipos de Personalización:** Estilos terapéuticos, estilos de escritura y tonos motivacionales
-- **7 Opciones por Categoría:** Cada tipo ofrece 7 estilos diferentes para máxima personalización
-- **Integración Completa:** Todos los componentes de IA adaptan su comportamiento según las preferencias
-- **Experiencia Consistente:** Las preferencias se aplican uniformemente en toda la aplicación
+- **Categorización Automática:** IA analiza transacciones y asigna categorías
+- **Corrección Manual:** Usuarios pueden corregir categorías incorrectas
+- **Aprendizaje:** El sistema mejora con cada corrección
+- **Categorías Personalizables:** Usuarios pueden crear categorías propias
 
 #### **Componentes Actualizados:**
-- **`AdvancedIntrospectiveAssistant`:** Chat terapéutico con estilos personalizables
-- **`TherapistReflection`:** Análisis de entradas con enfoque terapéutico adaptativo
-- **`BasicWritingAssistant`:** Sugerencias de escritura según el estilo preferido
-- **`WritingAssistant`:** Funcionalidades avanzadas con personalización
-- **`handleInspirationalMessage`:** Mensajes motivacionales con tonos personalizables
+- **`PDFStatementAnalyzer`:** Análisis automático mejorado
+- **`CategoryCorrectionModal`:** Interfaz para corrección de categorías
+- **`StatementsView`:** Vista mejorada de estados de cuenta
+- **`StatisticsPanel`:** Estadísticas por categoría
 
-#### **Beneficios de la Personalización:**
-- **Experiencia Única:** Cada usuario puede adaptar la IA a su estilo personal
-- **Mayor Engagement:** La IA se siente más personal y relevante
-- **Flexibilidad Terapéutica:** Diferentes enfoques para diferentes necesidades
-- **Escritura Personalizada:** Sugerencias que se alinean con el estilo del usuario
+### Sistema de Seguridad Avanzado (Diciembre 2024)
+Implementación de múltiples capas de seguridad:
 
-### Asistente de Escritura Básico Mejorado (Diciembre 2024)
-El asistente de escritura básico ahora proporciona ayuda inteligente según el estado de la entrada:
+#### **Características de Seguridad:**
+- **Bloqueo de Aplicación:** PIN personalizable o biométricos
+- **Autenticación de Dos Factores:** 2FA opcional para mayor seguridad
+- **Encriptación End-to-End:** Datos sensibles protegidos
+- **Configuración de Seguridad:** Panel centralizado de opciones
 
-#### **Para Entradas Vacías:**
-- **Sugerencias motivadoras** para comenzar a escribir
-- **Preguntas reflexivas** (3-4) que ayudan a explorar pensamientos y sentimientos
-- **Temas de escritura** (2-3 ideas) como punto de partida
-- **Técnicas de escritura** (2-3 consejos) para superar el bloqueo del escritor
-- **Ejemplo breve** de cómo comenzar una entrada de diario
-- **Tono cálido y empático** para motivar al usuario
-
-#### **Para Entradas con Contenido:**
-- **Corrección de gramática y ortografía**
-- **Mejora del flujo del texto**
-- **Mantenimiento de la voz del autor**
-- **Versión mejorada aplicable** con botón "Aplicar Sugerencia"
-
-#### **Beneficios de la Mejora:**
-- **Experiencia adaptativa:** Diferentes tipos de ayuda según el contexto
-- **Reducción del bloqueo:** Ayuda específica para usuarios que no saben por dónde empezar
-- **Mejora continua:** Mantiene la funcionalidad de mejora para usuarios experimentados
-- **Interfaz clara:** Títulos y mensajes que cambian según el estado de la entrada
+#### **Componentes de Seguridad:**
+- **`AppLock`:** Sistema de bloqueo con PIN
+- **`TwoFactorAuth`:** Configuración de 2FA
+- **`SecuritySettings`:** Panel de configuración de seguridad
+- **`UserProfile`:** Gestión de perfil y seguridad
 
 ---
 
 **Última actualización:** Diciembre 2024  
-**Versión del documento:** 1.3 
+**Versión del documento:** 2.0  
+**Proyecto:** FinanzApp - Control Total de tus Finanzas 

@@ -2,14 +2,20 @@ import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { collection, addDoc, updateDoc, deleteDoc, doc, query, where, getDocs } from 'firebase/firestore';
 import { encryptText, decryptText } from '../utils/crypto';
+import CreditCardDeleteModal from './CreditCardDeleteModal';
+import useTheme from '../hooks/useTheme';
 
 const CreditCardManager = ({ db, user, appId }) => {
     const { t } = useTranslation();
+    const { currentTheme } = useTheme();
     const [cards, setCards] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [showAddModal, setShowAddModal] = useState(false);
     const [editingCard, setEditingCard] = useState(null);
+    const [showDeleteModal, setShowDeleteModal] = useState(false);
+    const [cardToDelete, setCardToDelete] = useState(null);
+    const [statementsToDelete, setStatementsToDelete] = useState(0);
     const [formData, setFormData] = useState({
         name: '',
         bank: '',
@@ -141,15 +147,66 @@ const CreditCardManager = ({ db, user, appId }) => {
     };
 
     const handleDelete = async (cardId) => {
-        if (window.confirm(t('creditCards.confirmDelete'))) {
-            try {
-                const cardRef = doc(db, 'artifacts', appId, 'users', user.uid, 'creditCards', cardId);
-                await deleteDoc(cardRef);
-                loadCards();
-            } catch (error) {
-                console.error('Error deleting card:', error);
-            }
+        try {
+            // Primero, consultar cuántos estados de cuenta están asociados a esta tarjeta
+            const statementsRef = collection(db, 'artifacts', appId, 'users', user.uid, 'statements');
+            const statementsQuery = query(statementsRef, where('cardId', '==', cardId));
+            const statementsSnapshot = await getDocs(statementsQuery);
+            const statementsCount = statementsSnapshot.docs.length;
+            
+            // Encontrar la tarjeta para mostrar en el modal
+            const card = cards.find(c => c.id === cardId);
+            if (!card) return;
+            
+            // Configurar el modal de eliminación
+            setCardToDelete(card);
+            setStatementsToDelete(statementsCount);
+            setShowDeleteModal(true);
+        } catch (error) {
+            console.error('Error preparing delete confirmation:', error);
+            alert(t('creditCards.deleteError'));
         }
+    };
+
+    const confirmDelete = async () => {
+        if (!cardToDelete) return;
+        
+        try {
+            // Eliminar todos los estados de cuenta asociados primero
+            if (statementsToDelete > 0) {
+                const statementsRef = collection(db, 'artifacts', appId, 'users', user.uid, 'statements');
+                const statementsQuery = query(statementsRef, where('cardId', '==', cardToDelete.id));
+                const statementsSnapshot = await getDocs(statementsQuery);
+                
+                const deletePromises = statementsSnapshot.docs.map(doc => 
+                    deleteDoc(doc.ref)
+                );
+                await Promise.all(deletePromises);
+                console.log(`✅ ${statementsToDelete} estado(s) de cuenta eliminado(s)`);
+            }
+            
+            // Luego eliminar la tarjeta
+            const cardRef = doc(db, 'artifacts', appId, 'users', user.uid, 'creditCards', cardToDelete.id);
+            await deleteDoc(cardRef);
+            console.log('✅ Tarjeta eliminada exitosamente');
+            
+            // Recargar la lista de tarjetas
+            await loadCards();
+            
+            // Cerrar el modal
+            setShowDeleteModal(false);
+            setCardToDelete(null);
+            setStatementsToDelete(0);
+        } catch (error) {
+            console.error('Error deleting card and statements:', error);
+            alert(t('creditCards.deleteError'));
+        }
+    };
+
+    const closeDeleteModal = () => {
+        setShowDeleteModal(false);
+        setCardToDelete(null);
+        setStatementsToDelete(0);
     };
 
     const resetForm = () => {
@@ -441,6 +498,16 @@ const CreditCardManager = ({ db, user, appId }) => {
                     </div>
                 </div>
             )}
+            
+            {/* Modal de confirmación de eliminación */}
+            <CreditCardDeleteModal
+                isOpen={showDeleteModal}
+                onClose={closeDeleteModal}
+                onConfirm={confirmDelete}
+                card={cardToDelete}
+                statementsCount={statementsToDelete}
+                currentTheme={currentTheme}
+            />
         </div>
     );
 };

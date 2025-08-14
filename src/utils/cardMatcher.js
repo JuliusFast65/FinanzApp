@@ -344,26 +344,80 @@ export const generateCardSuggestions = (duplicateAnalysis) => {
 export const isSafeToAutoCreate = (duplicateAnalysis, analysisData) => {
     const { canCreateSafely, exactMatches, strongMatches, possibleMatches } = duplicateAnalysis;
     
-    // Criterios adicionales para auto-creación segura
-    const hasMinimumData = 
+    // 🔒 VALIDACIÓN ESTRICTA: Solo crear si tenemos TODOS los datos críticos
+    const hasCompleteData = 
         analysisData.bankName && 
+        analysisData.bankName.trim() !== '' &&
         analysisData.lastFourDigits && 
-        analysisData.totalBalance !== null;
+        analysisData.lastFourDigits.trim() !== '' &&
+        analysisData.cardHolderName && 
+        analysisData.cardHolderName.trim() !== '' &&
+        analysisData.totalBalance !== null && 
+        analysisData.totalBalance !== undefined;
+
+    // Validar que los datos no sean valores por defecto o placeholder
+    const hasValidData = 
+        analysisData.bankName !== 'Banco Desconocido' &&
+        analysisData.lastFourDigits !== 'xxxx' &&
+        analysisData.cardHolderName !== 'Titular Principal' &&
+        analysisData.lastFourDigits.length === 4 &&
+        /^\d{4}$/.test(analysisData.lastFourDigits);
 
     // Ser más conservadores: solo auto-crear si realmente no hay coincidencias
     const noAnyMatches = exactMatches.length === 0 && strongMatches.length === 0 && possibleMatches.length === 0;
     
-    const isSafe = canCreateSafely && hasMinimumData && noAnyMatches;
+    const isSafe = canCreateSafely && hasCompleteData && hasValidData && noAnyMatches;
     
     console.log('🔒 Evaluando si es seguro auto-crear:', {
         canCreateSafely,
-        hasMinimumData,
+        hasCompleteData,
+        hasValidData,
         noAnyMatches,
         exactMatches: exactMatches.length,
         strongMatches: strongMatches.length,
         possibleMatches: possibleMatches.length,
+        dataQuality: {
+            bankName: analysisData.bankName,
+            lastFourDigits: analysisData.lastFourDigits,
+            cardHolderName: analysisData.cardHolderName,
+            totalBalance: analysisData.totalBalance
+        },
         finalDecision: isSafe
     });
 
     return isSafe;
+};
+
+/**
+ * Valida si los datos del análisis son suficientes para mostrar opciones de creación de tarjeta
+ */
+export const hasSufficientDataForCardCreation = (analysisData) => {
+    // Verificar que tengamos al menos los datos mínimos para mostrar opciones
+    const hasMinimumData = 
+        analysisData.bankName && 
+        analysisData.bankName.trim() !== '' &&
+        analysisData.lastFourDigits && 
+        analysisData.lastFourDigits.trim() !== '';
+
+    // Verificar que los datos no sean valores por defecto
+    const hasValidData = 
+        analysisData.bankName !== 'Banco Desconocido' &&
+        analysisData.lastFourDigits !== 'xxxx' &&
+        analysisData.lastFourDigits.length === 4 &&
+        /^\d{4}$/.test(analysisData.lastFourDigits);
+
+    const isSufficient = hasMinimumData && hasValidData;
+    
+    console.log('🔍 Evaluando si hay datos suficientes para mostrar opciones de tarjeta:', {
+        hasMinimumData,
+        hasValidData,
+        dataQuality: {
+            bankName: analysisData.bankName,
+            lastFourDigits: analysisData.lastFourDigits,
+            cardHolderName: analysisData.cardHolderName
+        },
+        finalDecision: isSufficient
+    });
+
+    return isSufficient;
 };

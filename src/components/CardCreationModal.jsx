@@ -121,6 +121,25 @@ const CardCreationModal = ({
                                 </div>
                             )}
                         </div>
+                        
+                        {/* 🔒 Indicador de calidad de datos */}
+                        {(!analysisData.bankName || !analysisData.lastFourDigits || !analysisData.cardHolderName) && (
+                            <div className="mt-3 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+                                <div className="flex items-center">
+                                    <svg className="w-5 h-5 text-yellow-600 dark:text-yellow-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                                    </svg>
+                                    <span className="text-sm text-yellow-800 dark:text-yellow-200">
+                                        ⚠️ Algunos datos de la tarjeta están incompletos
+                                    </span>
+                                </div>
+                                <div className="mt-2 text-xs text-yellow-700 dark:text-yellow-300">
+                                    <p>• Banco: {analysisData.bankName ? '✅' : '❌'}</p>
+                                    <p>• Últimos 4 dígitos: {analysisData.lastFourDigits ? '✅' : '❌'}</p>
+                                    <p>• Titular: {analysisData.cardHolderName ? '✅' : '❌'}</p>
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     {/* Options */}

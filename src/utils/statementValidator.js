@@ -51,6 +51,15 @@ export const validateStatement = (statementData) => {
 
         // Calcular totales desde transacciones
         const calculatedTotals = calculateTotalsFromTransactions(transactions);
+        
+        // Actualizar indicadores de completitud basándose en los datos disponibles
+        calculatedTotals.hasPreviousBalance = effectivePreviousBalance !== undefined && effectivePreviousBalance !== null;
+        calculatedTotals.hasCurrentBalance = totalBalance !== undefined && totalBalance !== null;
+        calculatedTotals.hasMinimumPayment = minimumPayment !== undefined && minimumPayment !== null;
+        calculatedTotals.hasPayments = calculatedTotals.totalPayments > 0;
+        calculatedTotals.hasStatementDate = statementDate !== undefined && statementDate !== null;
+        calculatedTotals.hasDueDate = dueDate !== undefined && dueDate !== null;
+        
         validation.calculations = calculatedTotals;
 
         // ==================== VALIDACIÓN 1: FÓRMULA DE SALDO ====================
@@ -113,7 +122,7 @@ export const validateStatement = (statementData) => {
                     validation.warnings.push({
                         type: 'balance_formula_mismatch',
                         field: 'totalBalance',
-                        message: `Fórmula de saldo no cuadra: Saldo anterior ($${parsedPreviousBalance.toLocaleString()}) + Cargos ($${calculatedTotals.totalCharges.toLocaleString()}) - Pagos ($${calculatedTotals.totalPayments.toLocaleString()}) = $${expectedBalance.toLocaleString()}, pero el saldo reportado es $${parsedTotalBalance.toLocaleString()}`,
+                        message: `Fórmula de saldo no cuadra: Saldo anterior $${parsedPreviousBalance.toLocaleString()} + Cargos $${calculatedTotals.totalCharges.toLocaleString()} - Pagos $${calculatedTotals.totalPayments.toLocaleString()} = $${expectedBalance.toLocaleString()}, pero el saldo reportado es $${parsedTotalBalance.toLocaleString()}`,
                         severity: 'high',
                         expected: expectedBalance,
                         actual: parsedTotalBalance,
@@ -354,7 +363,15 @@ const calculateTotalsFromTransactions = (transactions) => {
         totalPayments: 0,
         totalFees: 0,
         totalInterest: 0,
-        transactionCount: transactions.length
+        transactionCount: transactions.length,
+        // Indicadores de completitud de datos
+        hasPreviousBalance: false,
+        hasCurrentBalance: false,
+        hasMinimumPayment: false,
+        hasPayments: false,
+        hasStatementDate: false,
+        hasDueDate: false,
+        totalTransactions: transactions.length
     };
 
     console.log('💰 Calculando totales desde transacciones...');
@@ -683,6 +700,38 @@ export const getConfidenceScore = (validation) => {
         else if (warning.severity === 'medium') score -= 8;
         else score -= 3;
     });
+
+    // Penalizar por falta de datos completos
+    // Si no hay suficientes datos para hacer validaciones, la confianza debe ser baja
+    const hasBalanceData = validation.calculations && (
+        validation.calculations.hasPreviousBalance || 
+        validation.calculations.hasCurrentBalance
+    );
+    
+    const hasPaymentData = validation.calculations && (
+        validation.calculations.hasMinimumPayment || 
+        validation.calculations.hasPayments
+    );
+    
+    const hasTransactionData = validation.calculations && 
+        validation.calculations.totalTransactions > 0;
+    
+    const hasDateData = validation.calculations && (
+        validation.calculations.hasStatementDate || 
+        validation.calculations.hasDueDate
+    );
+
+    // Si faltan datos críticos, penalizar significativamente
+    if (!hasBalanceData) score -= 30; // Sin datos de saldo
+    if (!hasPaymentData) score -= 25; // Sin datos de pagos
+    if (!hasTransactionData) score -= 20; // Sin transacciones
+    if (!hasDateData) score -= 15; // Sin fechas
+
+    // Si no hay suficientes datos para hacer validaciones básicas, 
+    // la confianza máxima debería ser 50%
+    if (!hasBalanceData && !hasPaymentData && !hasTransactionData) {
+        score = Math.min(score, 50);
+    }
 
     return Math.max(0, score);
 };

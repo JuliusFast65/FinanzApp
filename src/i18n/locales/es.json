@@ -373,6 +373,12 @@
     "noCards": "No tienes tarjetas de crédito registradas",
     "addFirstCard": "Agregar tu primera tarjeta",
     "confirmDelete": "¿Estás seguro de que quieres eliminar esta tarjeta?",
+    "confirmDeleteWithStatement": "¿Estás seguro de que quieres eliminar esta tarjeta? También se eliminará 1 estado de cuenta asociado.",
+    "confirmDeleteWithStatements": "¿Estás seguro de que quieres eliminar esta tarjeta? También se eliminarán {{count}} estados de cuenta asociados.",
+    "deleteError": "Error al eliminar la tarjeta. Inténtalo de nuevo.",
+    "deleteCardTitle": "Eliminar Tarjeta de Crédito",
+    "statementsWarning": "Estados de Cuenta",
+    "deleteWarningMessage": "Esta acción eliminará permanentemente la tarjeta y todos sus estados de cuenta asociados.",
     "cardName": "Nombre de la Tarjeta",
     "bank": "Banco",
     "cardNumber": "Número de Tarjeta",
@@ -423,5 +429,21 @@
     "dueToday": "Vence hoy",
     "dueTomorrow": "Vence mañana",
     "daysUntilDue": "{{days}} días para vencer"
+  },
+  "statements": {
+    "deleteStatementTitle": "Eliminar Estado de Cuenta",
+    "confirmDeleteMessage": "¿Estás seguro de que quieres eliminar este estado de cuenta?",
+    "cardName": "Tarjeta",
+    "period": "Período",
+    "transactions": "Transacciones",
+    "balance": "Saldo",
+    "unknownCard": "Tarjeta no encontrada",
+    "noPeriod": "Sin período",
+    "transactionCount": "transacciones",
+    "transactionsWarning": "Transacciones",
+    "confirmDeleteWithTransaction": "También se eliminará 1 transacción asociada.",
+    "confirmDeleteWithTransactions": "También se eliminarán {{count}} transacciones asociadas.",
+    "deleteWarningMessage": "Esta acción eliminará permanentemente el estado de cuenta y todas sus transacciones asociadas.",
+    "deleteError": "Error al eliminar el estado de cuenta. Inténtalo de nuevo."
   }
 } 

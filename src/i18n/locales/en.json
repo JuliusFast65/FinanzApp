@@ -656,5 +656,45 @@
       "finish": "Finish",
       "skip": "Skip"
     }
+  },
+  "creditCards": {
+    "title": "Credit Cards",
+    "addCard": "Add Card",
+    "editCard": "Edit Card",
+    "noCards": "You don't have any credit cards registered",
+    "addFirstCard": "Add your first card",
+    "confirmDelete": "Are you sure you want to delete this card?",
+    "confirmDeleteWithStatement": "Are you sure you want to delete this card? 1 associated statement will also be deleted.",
+    "confirmDeleteWithStatements": "Are you sure you want to delete this card? {{count}} associated statements will also be deleted.",
+    "deleteError": "Error deleting the card. Please try again.",
+    "deleteCardTitle": "Delete Credit Card",
+    "statementsWarning": "Bank Statements",
+    "deleteWarningMessage": "This action will permanently delete the card and all its associated statements.",
+    "cardName": "Card Name",
+    "bank": "Bank",
+    "cardNumber": "Card Number",
+    "limit": "Credit Limit",
+    "currentBalance": "Current Balance",
+    "dueDate": "Due Date",
+    "closingDate": "Closing Date",
+    "balance": "Balance",
+    "available": "Available Credit",
+    "utilization": "Utilization"
+  },
+  "statements": {
+    "deleteStatementTitle": "Delete Bank Statement",
+    "confirmDeleteMessage": "Are you sure you want to delete this bank statement?",
+    "cardName": "Card",
+    "period": "Period",
+    "transactions": "Transactions",
+    "balance": "Balance",
+    "unknownCard": "Card not found",
+    "noPeriod": "No period",
+    "transactionCount": "transactions",
+    "transactionsWarning": "Transactions",
+    "confirmDeleteWithTransaction": "1 associated transaction will also be deleted.",
+    "confirmDeleteWithTransactions": "{{count}} associated transactions will also be deleted.",
+    "deleteWarningMessage": "This action will permanently delete the statement and all its associated transactions.",
+    "deleteError": "Error deleting the statement. Please try again."
   }
 } 

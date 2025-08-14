@@ -645,5 +645,45 @@
       "finish": "Terminer",
       "skip": "Passer"
     }
+  },
+  "creditCards": {
+    "title": "Cartes de Crédit",
+    "addCard": "Ajouter une Carte",
+    "editCard": "Modifier la Carte",
+    "noCards": "Vous n'avez aucune carte de crédit enregistrée",
+    "addFirstCard": "Ajoutez votre première carte",
+    "confirmDelete": "Êtes-vous sûr de vouloir supprimer cette carte ?",
+    "confirmDeleteWithStatement": "Êtes-vous sûr de vouloir supprimer cette carte ? 1 relevé associé sera également supprimé.",
+    "confirmDeleteWithStatements": "Êtes-vous sûr de vouloir supprimer cette carte ? {{count}} relevés associés seront également supprimés.",
+    "deleteError": "Erreur lors de la suppression de la carte. Veuillez réessayer.",
+    "deleteCardTitle": "Supprimer la Carte de Crédit",
+    "statementsWarning": "Relevés Bancaires",
+    "deleteWarningMessage": "Cette action supprimera définitivement la carte et tous ses relevés associés.",
+    "cardName": "Nom de la Carte",
+    "bank": "Banque",
+    "cardNumber": "Numéro de Carte",
+    "limit": "Limite de Crédit",
+    "currentBalance": "Solde Actuel",
+    "dueDate": "Date d'Échéance",
+    "closingDate": "Date de Clôture",
+    "balance": "Solde",
+    "available": "Crédit Disponible",
+    "utilization": "Utilisation"
+  },
+  "statements": {
+    "deleteStatementTitle": "Supprimer le Relevé Bancaire",
+    "confirmDeleteMessage": "Êtes-vous sûr de vouloir supprimer ce relevé bancaire ?",
+    "cardName": "Carte",
+    "period": "Période",
+    "transactions": "Transactions",
+    "balance": "Solde",
+    "unknownCard": "Carte non trouvée",
+    "noPeriod": "Aucune période",
+    "transactionCount": "transactions",
+    "transactionsWarning": "Transactions",
+    "confirmDeleteWithTransaction": "1 transaction associée sera également supprimée.",
+    "confirmDeleteWithTransactions": "{{count}} transactions associées seront également supprimées.",
+    "deleteWarningMessage": "Cette action supprimera définitivement le relevé et toutes ses transactions associées.",
+    "deleteError": "Erreur lors de la suppression du relevé. Veuillez réessayer."
   }
 } 

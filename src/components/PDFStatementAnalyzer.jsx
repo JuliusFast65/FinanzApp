@@ -6,8 +6,8 @@ import { categorizeTransactions } from '../utils/transactionCategories';
 import { loadUserCategoryPatterns } from '../utils/userCategoryPatterns';
 import { validateStatement, formatValidationResult, getConfidenceScore } from '../utils/statementValidator';
 import { parseAIResponse, parseStatementResponse, parseTransactionsResponse, logParsingError } from '../utils/jsonParser';
-import { findPotentialDuplicates, generateCardSuggestions, isSafeToAutoCreate } from '../utils/cardMatcher';
-import { loadUserSettings } from '../utils/userSettings';
+import { findPotentialDuplicates, generateCardSuggestions, isSafeToAutoCreate, hasSufficientDataForCardCreation } from '../utils/cardMatcher';
+import { useUserSettings } from '../utils/userSettings';
 import CategoryCorrectionModal from './CategoryCorrectionModal';
 import CardCreationModal from './CardCreationModal';
 import * as pdfjsLib from 'pdfjs-dist';
@@ -43,9 +43,19 @@ const PDFStatementAnalyzer = ({ db, user, appId, onStatementAnalyzed, onNavigate
     const [cards, setCards] = useState([]);
     const [isLoadingCards, setIsLoadingCards] = useState(true);
     const [previewImage, setPreviewImage] = useState(null);
-    const [selectedAI, setSelectedAI] = useState('openai'); // openai por defecto (mejor cuota para desarrollo)
+    const [selectedAI, setSelectedAI] = useState(null); // Se establecerá basado en la configuración del usuario
     const [userPatterns, setUserPatterns] = useState({});
-    const [userSettings, setUserSettings] = useState(null);
+    const { settings: userSettings, isLoading: isLoadingSettings } = useUserSettings(db, user, appId);
+    
+    // Log inicial del componente
+    console.log('🔍 [DEBUG] PDFStatementAnalyzer montado con:', {
+        db: !!db,
+        user: !!user,
+        appId,
+        userSettings,
+        isLoadingSettings,
+        selectedAI
+    });
     const [correctionModal, setCorrectionModal] = useState({
         isOpen: false,
         transaction: null
@@ -364,6 +374,14 @@ const PDFStatementAnalyzer = ({ db, user, appId, onStatementAnalyzed, onNavigate
 - Es MEJOR dejar un campo vacío (null) que proporcionar información incorrecta
 - Si tienes dudas sobre algún dato, déjalo como null`,
 
+            // Instrucciones para excluir subtotales y totales
+            excludeSubtotalsInstructions: `INSTRUCCIONES CRÍTICAS PARA EXCLUIR SUBTOTALES Y TOTALES:
+- NO consideres como transacción ninguna línea que contenga las palabras "SUBTOTAL" o "TOTAL"
+- Estas líneas son resúmenes de grupo y NO son transacciones individuales
+- Si encuentras "SUBTOTAL PAGOS", "TOTAL CONSUMOS", "SUBTOTAL COMISIONES", etc., NO los incluyas
+- Solo extrae las transacciones individuales que componen esos subtotales
+- Los subtotales y totales son informativos, no transacciones reales`,
+
             // Instrucciones finales para análisis completo
             finalInstructionsComplete: `Devuelve SOLO el JSON, sin texto adicional
 Si un campo no está visible, usa null
@@ -399,21 +417,7 @@ Busca movimientos, compras, pagos, cargos, etc. de TODOS los grupos`
         }
     }, [db, user, appId]);
 
-    const loadUserSettingsData = useCallback(async () => {
-        try {
-            console.log('Cargando configuraciones del usuario...');
-            const settings = await loadUserSettings(db, user.uid, appId);
-            setUserSettings(settings);
-            
-            // Aplicar la IA por defecto del usuario (COMENTADO TEMPORALMENTE PARA DEBUG)
-            // if (settings.defaultAI && settings.defaultAI !== selectedAI) {
-            //     setSelectedAI(settings.defaultAI);
-            //     console.log('IA por defecto aplicada:', settings.defaultAI);
-            // }
-        } catch (error) {
-            console.error('Error cargando configuraciones del usuario:', error);
-        }
-    }, [db, user, appId, selectedAI]);
+    
 
     const loadCards = useCallback(async () => {
         try {
@@ -548,9 +552,30 @@ Busca movimientos, compras, pagos, cargos, etc. de TODOS los grupos`
         if (db && user && appId) {
             loadCards();
             loadUserPatterns();
-            loadUserSettingsData();
         }
-    }, [db, user, appId, loadCards, loadUserPatterns, loadUserSettingsData]);
+    }, [db, user, appId, loadCards, loadUserPatterns]);
+
+    // Aplicar la configuración de IA del usuario cuando se cargue
+    useEffect(() => {
+        console.log('🔍 [DEBUG] useEffect userSettings ejecutado:', {
+            userSettings,
+            defaultAI: userSettings?.defaultAI,
+            selectedAI,
+            isLoadingSettings
+        });
+        
+        if (userSettings?.defaultAI) {
+            setSelectedAI(userSettings.defaultAI);
+            console.log('✅ IA por defecto del usuario aplicada:', userSettings.defaultAI);
+        } else {
+            console.log('⚠️ No hay configuración de IA disponible');
+        }
+    }, [userSettings?.defaultAI]);
+
+    // Monitorear cambios en selectedAI para debug
+    useEffect(() => {
+        console.log('🔍 [DEBUG] selectedAI cambió a:', selectedAI);
+    }, [selectedAI]);
 
     const handleFileSelect = async (event) => {
         const file = event.target.files[0];
@@ -884,6 +909,8 @@ ${instructions.transactionTypeLogic}
 
 ${instructions.specificPatterns}
 
+${instructions.excludeSubtotalsInstructions}
+
 ${instructions.finalInstructionsComplete}`;
 
             // Log para debug - verificar que el prompt se construya correctamente
@@ -1037,6 +1064,13 @@ PATRONES ESPECÍFICOS A BUSCAR EN TRANSACCIONES:
 - "CONSUMOS DEL PERIODO" o "MOVIMIENTOS" (extrae cada compra individual)
 - Transacciones con tipos como "CV", "DEV", "PAGO", "N/D", "CONS."
 
+INSTRUCCIONES CRÍTICAS PARA EXCLUIR SUBTOTALES Y TOTALES:
+- NO consideres como transacción ninguna línea que contenga las palabras "SUBTOTAL" o "TOTAL"
+- Estas líneas son resúmenes de grupo y NO son transacciones individuales
+- Si encuentras "SUBTOTAL PAGOS", "TOTAL CONSUMOS", "SUBTOTAL COMISIONES", etc., NO los incluyas
+- Solo extrae las transacciones individuales que componen esos subtotales
+- Los subtotales y totales son informativos, no transacciones reales
+
 INSTRUCCIONES CRÍTICAS PARA MONEDA EXTRANJERA:
 - Si una transacción tiene un valor en moneda extranjera, NO uses ese valor como monto principal
 - El monto principal debe ser el valor en la moneda local (pesos, soles, etc.)
@@ -1108,6 +1142,39 @@ Busca movimientos, compras, pagos, cargos, etc. de TODOS los grupos`;
             console.log(`🔍 [DEBUG] Longitud de imageData:`, imageData?.length || 0);
             console.log(`🔍 [DEBUG] Primeros 100 chars de imageData:`, imageData?.substring(0, 100));
             
+            const instructions = generateCommonInstructions();
+            
+            const prompt = `Analiza esta página ${pageNumber} de un estado de cuenta de tarjeta de crédito y extrae TODAS las transacciones en formato JSON estricto:
+
+IMPORTANTE: DEBES incluir TODOS los campos mostrados en la estructura JSON siguiente, incluyendo:
+- Los campos de tarjeta: "cardNumber" y "cardName" en CADA transacción
+- Los campos de moneda extranjera: "foreignCurrencyAmount" y "foreignCurrencyCode" en CADA transacción
+
+${instructions.transactionsStructure}
+
+${instructions.groupedSectionsInstructions}
+
+${instructions.operationTypesInstructions}
+
+${instructions.signColumnsInstructions}
+
+${instructions.transactionTypeLogic}
+
+${instructions.specificPatterns}
+
+${instructions.excludeSubtotalsInstructions}
+
+${instructions.foreignCurrencyInstructions}
+
+${instructions.cardInstructions}
+
+${instructions.unrecognizedDataInstructions}
+
+${instructions.finalInstructionsTransactions}`;
+
+            // Log para debug - verificar que el prompt se construya correctamente
+            console.log(`🔍 [DEBUG] Prompt completo enviado a OpenAI página ${pageNumber}:`, prompt.substring(0, 500) + '...');
+            
             const response = await openai.chat.completions.create({
                 model: "gpt-4o",
                 messages: [
@@ -1116,95 +1183,7 @@ Busca movimientos, compras, pagos, cargos, etc. de TODOS los grupos`;
                         content: [
                             {
                                 type: "text",
-                                text: `Analiza esta página ${pageNumber} de un estado de cuenta de tarjeta de crédito y extrae TODAS las transacciones en formato JSON estricto:
-
-IMPORTANTE: DEBES incluir TODOS los campos mostrados en la estructura JSON siguiente, incluyendo:
-- Los campos de tarjeta: "cardNumber" y "cardName" en CADA transacción
-- Los campos de moneda extranjera: "foreignCurrencyAmount" y "foreignCurrencyCode" en CADA transacción
-
-[
-  {
-    "date": "YYYY-MM-DD",
-    "description": "descripción_transacción",
-    "amount": número_decimal,
-    "type": "cargo|pago|ajuste",
-    "group": "pagos|comisiones|intereses|tarjeta_adicional|compras|general",
-    "cardNumber": "número_tarjeta" (número de la tarjeta que realizó la transacción),
-    "cardName": "nombre_tarjeta" (nombre del titular de la tarjeta),
-    "foreignCurrencyAmount": número_decimal (valor en moneda extranjera, si existe),
-    "foreignCurrencyCode": "código_moneda" (USD, EUR, etc., si existe)
-  }
-]
-
-INSTRUCCIONES CRÍTICAS PARA SECCIONES AGRUPADAS:
-- Los estados de cuenta suelen tener SECCIONES AGRUPADAS con subtotales
-- PRIMER GRUPO: Generalmente "PAGOS/CREDITOS" o "SALDO ANTERIOR" al inicio
-- SEGUNDO GRUPO: Comisiones, intereses, notas de débito
-- TERCER GRUPO: Consumos/compras del período
-- DEBES extraer TODAS las transacciones de TODAS las secciones agrupadas
-- NO omitas transacciones por estar en resúmenes o subtotales
-- Busca en TODA la página, especialmente en las secciones superiores
-- Revisa también secciones de "MOVIMIENTOS DEL PERIODO" o "DETALLE DE MOVIMIENTOS"
-- Si hay un subtotal de grupo, extrae también las transacciones individuales que lo componen
-
-INTERPRETACIÓN CRÍTICA DE TIPOS DE OPERACIÓN:
-- **"DEV"** = DEVOLUCIÓN = tipo "pago" (crédito que reduce deuda)
-- **"CV"** = CRÉDITO = tipo "pago" (crédito que reduce deuda)
-- **"PAGO"** = PAGO = tipo "pago" (crédito que reduce deuda)
-- **"N/D"** = NOTA DE DÉBITO = tipo "cargo" (débito que aumenta deuda)
-- **"CONS."** = CONSUMO = tipo "cargo" (débito que aumenta deuda)
-- **"SALDO ANTERIOR"** = tipo "ajuste" (balance inicial)
-
-INTERPRETACIÓN CRÍTICA DE COLUMNAS DE SIGNO:
-- **Columna "+/-"**: 
-  - **"+"** = DÉBITO (aumenta deuda) = tipo "cargo"
-  - **"-"** = CRÉDITO (reduce deuda) = tipo "pago"
-  - **Vacía** = Revisar tipo de operación o descripción
-- **Columna "SIGNO"** o "INDICADOR":
-  - **"D"** = DÉBITO = tipo "cargo"
-  - **"C"** = CRÉDITO = tipo "pago"
-  - **"+"** = DÉBITO = tipo "cargo"
-  - **"-"** = CRÉDITO = tipo "pago"
-
-IMPORTANTE: El tipo de transacción debe basarse en:
-1. **PRIMERO**: El TIPO DE OPERACIÓN (DEV, CV, PAGO, N/D, CONS.)
-2. **SEGUNDO**: Las columnas de SIGNO (+/-, D/C, +, -)
-3. **TERCERO**: El monto (negativo = crédito, positivo = débito, pero no siempre)
-
-- Una transacción con tipo "DEV" siempre es un crédito, aunque el monto sea positivo
-- Una transacción con tipo "N/D" siempre es un débito, aunque el monto sea pequeño
-- Una transacción con signo "+" siempre es un débito, aunque el tipo de operación sea ambiguo
-- Una transacción con signo "-" siempre es un crédito, aunque el tipo de operación sea ambiguo
-
-INSTRUCCIONES CRÍTICAS PARA MONEDA EXTRANJERA:
-- Si una transacción tiene un valor en moneda extranjera, NO uses ese valor como monto principal
-- El monto principal debe ser el valor en la moneda local (pesos, soles, etc.)
-- El valor en moneda extranjera va en "foreignCurrencyAmount"
-- El código de moneda extranjera va en "foreignCurrencyCode" (USD, EUR, GBP, etc.)
-- Si no hay moneda extranjera, usa null en ambos campos
-
-INSTRUCCIONES CRÍTICAS PARA TARJETAS:
-- Cada transacción debe incluir información de la tarjeta que la realizó
-- "cardNumber": número completo o últimos dígitos de la tarjeta (principal o adicional)
-- "cardName": nombre del titular de la tarjeta (principal o adicional)
-- Si no puedes identificar la tarjeta específica, usa null en ambos campos
-- Los bancos suelen agrupar transacciones por tarjeta, identifica a qué tarjeta pertenece cada transacción
-
-INSTRUCCIONES CRÍTICAS PARA DATOS NO RECONOCIDOS:
-- Si NO puedes reconocer claramente algún dato, NO lo inventes ni lo adivines
-- Para campos numéricos: usa null si no está visible o es ambiguo
-- Para campos de texto: usa null si no está legible o es ambiguo
-- Para fechas: usa null si no están claras o son ambiguas
-- Para transacciones: si no puedes determinar el tipo, monto o fecha, usa null en esos campos
-- Es MEJOR dejar un campo vacío (null) que proporcionar información incorrecta
-- Si tienes dudas sobre algún dato, déjalo como null
-
-Devuelve SOLO el array JSON de transacciones, sin texto adicional
-Si no hay transacciones en esta página, devuelve un array vacío: []
-Para montos usa números decimales (ej: 1234.56)
-Las fechas en formato YYYY-MM-DD
-Los montos negativos indican pagos/créditos
-Busca movimientos, compras, pagos, cargos, etc. de TODOS los grupos`
+                                text: prompt
                             },
                             {
                                 type: "image_url",
@@ -1332,6 +1311,52 @@ Busca movimientos, compras, pagos, cargos, etc. de TODOS los grupos`
             }
             console.log('Enviando imagen a GPT-4o...');
             
+            const instructions = generateCommonInstructions();
+            
+            // Log para debug - verificar que las instrucciones se generen correctamente
+            console.log('🔍 [DEBUG] Instrucciones generadas para OpenAI:', {
+                hasCompleteStructure: !!instructions.completeAnalysisStructure,
+                hasCardInstructions: !!instructions.cardInstructions,
+                hasForeignCurrencyInstructions: !!instructions.foreignCurrencyInstructions
+            });
+            
+            const prompt = `Analiza este estado de cuenta de tarjeta de crédito y extrae la siguiente información en formato JSON estricto:
+
+${instructions.completeAnalysisStructure}
+
+## 📋 INSTRUCCIONES PARA OPENAI:
+- Extrae fechas, descripciones, montos y tipos de transacciones
+- Si encuentras información de tarjeta o moneda extranjera, inclúyela
+- Si no la encuentras, no te preocupes - el sistema la completará
+- Enfócate en ser preciso con las transacciones básicas
+
+${instructions.criticalFieldsInstructions}
+
+${instructions.criticalTransactionsInstructions}
+
+${instructions.operationTypesInstructions}
+
+${instructions.signColumnsInstructions}
+
+${instructions.transactionTypeLogic}
+
+${instructions.specificPatterns}
+
+${instructions.excludeSubtotalsInstructions}
+
+${instructions.foreignCurrencyInstructions}
+
+${instructions.cardInstructions}
+
+${instructions.unrecognizedDataInstructions}
+
+${instructions.finalInstructionsComplete}`;
+
+            // Log para debug - verificar que el prompt se construya correctamente
+            console.log('🔍 [DEBUG] Prompt construido correctamente para OpenAI. Longitud:', prompt.length);
+            console.log('🔍 [DEBUG] Prompt incluye campos de tarjeta:', prompt.includes('cardNumber'));
+            console.log('🔍 [DEBUG] Prompt incluye campos de moneda extranjera:', prompt.includes('foreignCurrencyAmount'));
+
             const response = await openai.chat.completions.create({
                 model: "gpt-4o",
                 messages: [
@@ -1340,102 +1365,7 @@ Busca movimientos, compras, pagos, cargos, etc. de TODOS los grupos`
                         content: [
                             {
                                 type: "text",
-                                text: `Analiza este estado de cuenta de tarjeta de crédito y extrae la siguiente información en formato JSON estricto:
-
-{
-  "totalBalance": número_decimal (saldo total actual, puede ser 0),
-  "minimumPayment": número_decimal (pago mínimo requerido),
-  "dueDate": "YYYY-MM-DD" (fecha de vencimiento del pago),
-  "creditLimit": número_decimal (límite de crédito total),
-  "availableCredit": número_decimal (crédito disponible),
-  "previousBalance": número_decimal (saldo del periodo anterior),
-  "payments": número_decimal (pagos realizados en el periodo),
-  "charges": número_decimal (nuevos cargos del periodo),
-  "fees": número_decimal (comisiones cobradas),
-  "interest": número_decimal (intereses cobrados),
-  "bankName": "nombre_del_banco",
-  "cardHolderName": "nombre_completo_tarjetahabiente",
-  "lastFourDigits": "1234" (últimos 4 dígitos),
-  "statementDate": "YYYY-MM-DD" (fecha del estado de cuenta),
-  "transactions": [
-    {
-      "date": "YYYY-MM-DD",
-      "description": "descripción_transacción",
-      "amount": número_decimal,
-      "type": "cargo|pago|ajuste"
-    }
-  ]
-}
-
-INSTRUCCIONES CRÍTICAS PARA CAMPOS PRINCIPALES:
-- Para "payments": Usa el SUBTOTAL de la sección "PAGOS/CREDITOS" o "ABONOS" de la cabecera
-- Para "charges": Usa el SUBTOTAL de la sección "CONSUMOS DEL PERIODO" o "CARGOS" de la cabecera
-- Para "fees": Usa el SUBTOTAL de la sección "NOTAS DE DÉBITO" o "COMISIONES" de la cabecera
-- NO calcules estos valores sumando transacciones individuales
-- Usa los TOTALES que aparecen en los resúmenes de cabecera
-
-INSTRUCCIONES CRÍTICAS PARA TRANSACCIONES:
-- Los estados de cuenta suelen tener SECCIONES AGRUPADAS con subtotales
-- PRIMER GRUPO: "PAGOS/CREDITOS" o "SALDO ANTERIOR" al inicio
-- SEGUNDO GRUPO: Comisiones, intereses, notas de débito
-- TERCER GRUPO: Consumos/compras del período
-- DEBES extraer TODAS las transacciones de TODAS las secciones agrupadas
-- NO omitas transacciones por estar en resúmenes o subtotales
-- Busca en TODA la página, especialmente en las secciones superiores
-- Revisa también secciones de "MOVIMIENTOS DEL PERIODO" o "DETALLE DE MOVIMIENTOS"
-
-INTERPRETACIÓN CRÍTICA DE TIPOS DE OPERACIÓN:
-- **"DEV"** = DEVOLUCIÓN = tipo "pago" (crédito que reduce deuda)
-- **"CV"** = CRÉDITO = tipo "pago" (crédito que reduce deuda)
-- **"PAGO"** = PAGO = tipo "pago" (crédito que reduce deuda)
-- **"N/D"** = NOTA DE DÉBITO = tipo "cargo" (débito que aumenta deuda)
-- **"CONS."** = CONSUMO = tipo "cargo" (débito que aumenta deuda)
-- **"SALDO ANTERIOR"** = tipo "ajuste" (balance inicial)
-
-INTERPRETACIÓN CRÍTICA DE COLUMNAS DE SIGNO:
-- **Columna "+/-"**: 
-  - **"+"** = DÉBITO (aumenta deuda) = tipo "cargo"
-  - **"-"** = CRÉDITO (reduce deuda) = tipo "pago"
-  - **Vacía** = Revisar tipo de operación o descripción
-- **Columna "SIGNO"** o "INDICADOR":
-  - **"D"** = DÉBITO = tipo "cargo"
-  - **"C"** = CRÉDITO = tipo "pago"
-  - **"+"** = DÉBITO = tipo "cargo"
-  - **"-"** = CRÉDITO = tipo "pago"
-
-IMPORTANTE: El tipo de transacción debe basarse en:
-1. **PRIMERO**: El TIPO DE OPERACIÓN (DEV, CV, PAGO, N/D, CONS.)
-2. **SEGUNDO**: Las columnas de SIGNO (+/-, D/C, +, -)
-3. **TERCERO**: El monto (negativo = crédito, positivo = débito, pero no siempre)
-
-- Una transacción con tipo "DEV" siempre es un crédito, aunque el monto sea positivo
-- Una transacción con tipo "N/D" siempre es un débito, aunque el monto sea pequeño
-- Una transacción con signo "+" siempre es un débito, aunque el tipo de operación sea ambiguo
-- Una transacción con signo "-" siempre es un crédito, aunque el tipo de operación sea ambiguo
-
-PATRONES ESPECÍFICOS A BUSCAR EN TRANSACCIONES:
-- "SALDO ANTERIOR" o "BALANCE ANTERIOR" (es una transacción)
-- "PAGOS/CREDITOS" o "ABONOS" (extrae cada transacción individual)
-- "NOTAS DE DÉBITO" o "COMISIONES" (extrae cada cargo individual)
-- "CONSUMOS DEL PERIODO" o "MOVIMIENTOS" (extrae cada compra individual)
-- Transacciones con tipos como "CV", "DEV", "PAGO", "N/D", "CONS."
-
-INSTRUCCIONES CRÍTICAS PARA DATOS NO RECONOCIDOS:
-- Si NO puedes reconocer claramente algún dato, NO lo inventes ni lo adivines
-- Para campos numéricos: usa null si no está visible o es ambiguo
-- Para campos de texto: usa null si no está legible o es ambiguo
-- Para fechas: usa null si no están claras o son ambiguas
-- Para transacciones: si no puedes determinar el tipo, monto o fecha, usa null en esos campos
-- Es MEJOR dejar un campo vacío (null) que proporcionar información incorrecta
-- Si tienes dudas sobre algún dato, déjalo como null
-
-Devuelve SOLO el JSON, sin texto adicional
-Si un campo no está visible, usa null
-Para montos usa números decimales (ej: 1234.56, no "$1,234.56")
-Para fechas usa formato YYYY-MM-DD
-Los montos negativos indican pagos/créditos
-Lee cuidadosamente todos los números y fechas
-Busca información en toda la página, no solo en el resumen`
+                                text: prompt
                             },
                             {
                                 type: "image_url",
@@ -1477,6 +1407,11 @@ Busca información en toda la página, no solo en el resumen`
     // Función principal de análisis
     const analyzePDF = async (file) => {
         try {
+            // Validar que se haya seleccionado una IA
+            if (!selectedAI) {
+                throw new Error('No se ha seleccionado una IA para el análisis. Por favor, espera a que se cargue la configuración o selecciona una manualmente.');
+            }
+            
             // 1. Convertir PDF a imágenes
             const images = await convertPDFToImages(file);
             setAnalysisProgress(50);
@@ -2005,6 +1940,24 @@ Busca información en toda la página, no solo en el resumen`
         console.log('📊 Análisis de duplicados:', duplicateAnalysis);
         console.log('💡 Sugerencias generadas:', suggestions);
         
+        // 🔒 VALIDACIÓN: Solo proceder si hay datos suficientes para crear una tarjeta
+        if (!hasSufficientDataForCardCreation(analysisData)) {
+            console.log('❌ Datos insuficientes para crear tarjeta:', {
+                bankName: analysisData.bankName,
+                lastFourDigits: analysisData.lastFourDigits,
+                cardHolderName: analysisData.cardHolderName
+            });
+            
+            showNotification(
+                'warning',
+                '⚠️ Datos Insuficientes',
+                'No se pueden extraer datos suficientes de la tarjeta para crear un registro. El análisis continuará sin crear tarjeta.',
+                5000
+            );
+            
+            return null; // No crear tarjeta, pero continuar con el análisis
+        }
+        
         // Si es seguro crear automáticamente, hacerlo sin confirmación
         if (isSafeToAutoCreate(duplicateAnalysis, analysisData)) {
             console.log('✅ Es seguro crear automáticamente');
@@ -2033,6 +1986,12 @@ Busca información en toda la página, no solo en el resumen`
     const createCardFromAnalysis = async (analysisData) => {
         try {
             console.log('🔄 Creando tarjeta automáticamente desde análisis...');
+            
+            // 🔒 VALIDACIÓN ADICIONAL antes de crear
+            if (!hasSufficientDataForCardCreation(analysisData)) {
+                console.error('❌ Validación falló en createCardFromAnalysis');
+                throw new Error('Datos insuficientes para crear tarjeta');
+            }
             
             // Construir nombre de tarjeta inteligente
             const cardName = analysisData.cardHolderName 
@@ -2410,6 +2369,18 @@ Busca información en toda la página, no solo en el resumen`
             const { pendingAnalysis } = cardCreationModal;
             if (!pendingAnalysis) return;
 
+            // 🔒 VALIDACIÓN: Verificar que los datos sean suficientes antes de crear
+            if (!hasSufficientDataForCardCreation(pendingAnalysis)) {
+                console.error('❌ Datos insuficientes para crear tarjeta en handleCreateNewCard');
+                showNotification(
+                    'error',
+                    '❌ Datos Insuficientes',
+                    'No se pueden extraer datos suficientes de la tarjeta para crear un registro.',
+                    5000
+                );
+                return;
+            }
+
             console.log('✅ Usuario confirmó crear nueva tarjeta');
             
             // Cerrar modal inmediatamente
@@ -2468,6 +2439,18 @@ Busca información en toda la página, no solo en el resumen`
         try {
             const { pendingAnalysis } = cardCreationModal;
             if (!pendingAnalysis || !existingCard) return;
+
+            // 🔒 VALIDACIÓN: Verificar que los datos sean suficientes antes de vincular
+            if (!hasSufficientDataForCardCreation(pendingAnalysis)) {
+                console.error('❌ Datos insuficientes para vincular tarjeta en handleLinkExistingCard');
+                showNotification(
+                    'error',
+                    '❌ Datos Insuficientes',
+                    'No se pueden extraer datos suficientes de la tarjeta para vincular con un registro existente.',
+                    5000
+                );
+                return;
+            }
 
             console.log('🔗 Usuario eligió vincular con tarjeta existente:', existingCard.name);
             
@@ -2563,6 +2546,16 @@ Busca información en toda la página, no solo en el resumen`
                 <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                         Inteligencia Artificial
+                        {isLoadingSettings && (
+                            <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">
+                                ⏳ Cargando configuración...
+                            </span>
+                        )}
+                        {!isLoadingSettings && userSettings?.defaultAI && (
+                            <span className="ml-2 text-xs text-green-600 dark:text-green-400">
+                                ✅ Configuración del usuario aplicada
+                            </span>
+                        )}
                     </label>
                     <div className="grid grid-cols-2 gap-3 mb-4">
                         <button
@@ -2621,6 +2614,20 @@ Busca información en toda la página, no solo en el resumen`
                         <p><strong>OpenAI:</strong> Mayor cuota disponible (requiere saldo)</p>
                         <p><strong>Tip:</strong> Si aparece error de cuota, espera 1-2 minutos o cambia de IA</p>
                     </div>
+                    
+                    {/* Estado de la configuración */}
+                    {isLoadingSettings && (
+                        <div className="text-xs text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg border border-blue-200 dark:border-blue-800 mb-4">
+                            <p className="font-medium mb-1">⏳ Cargando configuración personalizada...</p>
+                            <p>Se aplicará automáticamente tu IA preferida del perfil</p>
+                        </div>
+                    )}
+                    {!isLoadingSettings && userSettings?.defaultAI && (
+                        <div className="text-xs text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 p-3 rounded-lg border border-green-200 dark:border-green-800 mb-4">
+                            <p className="font-medium mb-1">✅ Configuración aplicada</p>
+                            <p>Usando <strong>{userSettings.defaultAI === 'gemini' ? 'Gemini 1.5 Flash' : 'OpenAI GPT-4o'}</strong> según tu perfil</p>
+                        </div>
+                    )}
                 </div>
 
                 {/* Selección de tarjeta */}
