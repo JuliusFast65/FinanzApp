@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { collection, addDoc, doc, updateDoc, getDocs } from 'firebase/firestore';
 import { encryptText, decryptText } from '../utils/crypto';
-import { categorizeTransactions } from '../utils/transactionCategories';
+import { categorizeTransactions, TRANSACTION_CATEGORIES } from '../utils/transactionCategories';
 import { loadUserCategoryPatterns } from '../utils/userCategoryPatterns';
 import { validateStatement, formatValidationResult, getConfidenceScore } from '../utils/statementValidator';
 import { parseAIResponse, parseStatementResponse, parseTransactionsResponse, logParsingError } from '../utils/jsonParser';
@@ -537,7 +537,7 @@ Busca movimientos, compras, pagos, cargos, etc. de TODOS los grupos`
             showNotification(
                 'success',
                 '✅ Categoría Corregida',
-                `La transacción "${transaction.description}" ahora se categorizará como "${require('../utils/transactionCategories').TRANSACTION_CATEGORIES[newCategory]?.name}" en el futuro.`,
+                `La transacción "${transaction.description}" ahora se categorizará como "${TRANSACTION_CATEGORIES[newCategory]?.name}" en el futuro.`,
                 6000
             );
 

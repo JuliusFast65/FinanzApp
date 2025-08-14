@@ -1,5 +1,8 @@
 // Utilidad para detectar tarjetas duplicadas y encontrar coincidencias
 // Evita la creación automática de tarjetas duplicadas
+// 
+// NOTA: El límite de crédito NO se considera para la vinculación de tarjetas
+// Solo se usan: banco, últimos 4 dígitos y nombre del titular
 
 /**
  * Encuentra tarjetas potencialmente duplicadas basado en múltiples criterios
@@ -124,7 +127,7 @@ const normalizeCardData = (data) => {
         bank: normalizeString(bankName),
         lastFour: extractLastFour(lastFourDigits),
         holderName: normalizeString(data.cardHolderName || data.holderName || data.holder || ''),
-        limit: parseFloat(data.creditLimit || data.limit || data.creditLimit || 0),
+        limit: parseFloat(data.creditLimit || data.limit || data.creditLimit || 0), // Solo para referencia, no usado en comparación
         type: normalizeString(data.type || data.cardType || 'credit')
     };
 
@@ -218,17 +221,10 @@ const calculateMatchScore = (card1, card2) => {
         }
     }
 
-    // 4. Comparación de límite (peso: 10 puntos)
-    if (card1.limit && card2.limit && card1.limit > 0 && card2.limit > 0) {
-        const limitDifference = Math.abs(card1.limit - card2.limit) / Math.max(card1.limit, card2.limit);
-        if (limitDifference <= 0.05) { // Diferencia menor al 5%
-            score.details.limitMatch = 10;
-            score.reasons.push(`Límite muy similar: $${card1.limit.toLocaleString()} ≈ $${card2.limit.toLocaleString()}`);
-        } else if (limitDifference <= 0.2) { // Diferencia menor al 20%
-            score.details.limitMatch = 5;
-            score.reasons.push(`Límite similar`);
-        }
-    }
+    // 4. Comparación de límite - DESHABILITADA
+    // El límite de crédito ya no se considera para la vinculación de tarjetas
+    // score.details.limitMatch = 0;
+    // score.reasons.push(`Límite de crédito no considerado para vinculación`);
 
     // Calcular total
     score.total = Object.values(score.details).reduce((sum, value) => sum + (value || 0), 0);
