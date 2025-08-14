@@ -66,6 +66,326 @@ const PDFStatementAnalyzer = ({ db, user, appId, onStatementAnalyzed, onNavigate
     });
     const fileInputRef = useRef(null);
 
+    // Función para validar y corregir datos de análisis
+    const validateAndCorrectAnalysisData = (data) => {
+        console.log('🔍 [DEBUG] Validando y corrigiendo datos de análisis...');
+        
+        if (!data || typeof data !== 'object') {
+            console.warn('⚠️ Datos de análisis inválidos, devolviendo datos originales');
+            return data;
+        }
+        
+        // Asegurar que las transacciones existan
+        if (!data.transactions || !Array.isArray(data.transactions)) {
+            console.warn('⚠️ No hay transacciones en los datos, creando array vacío');
+            data.transactions = [];
+        }
+        
+        // Corregir cada transacción
+        data.transactions = data.transactions.map((transaction, index) => {
+            if (!transaction || typeof transaction !== 'object') {
+                console.warn(`⚠️ Transacción ${index} inválida, creando transacción por defecto`);
+                return {
+                    date: null,
+                    description: null,
+                    amount: null,
+                    type: null,
+                    cardNumber: null,
+                    cardName: null,
+                    foreignCurrencyAmount: null,
+                    foreignCurrencyCode: null
+                };
+            }
+            
+            // Asegurar que todos los campos requeridos existan
+            const correctedTransaction = {
+                date: transaction.date || null,
+                description: transaction.description || null,
+                amount: transaction.amount || null,
+                type: transaction.type || null,
+                cardNumber: transaction.cardNumber || null,
+                cardName: transaction.cardName || null,
+                foreignCurrencyAmount: transaction.foreignCurrencyAmount || null,
+                foreignCurrencyCode: transaction.foreignCurrencyCode || null
+            };
+            
+            // Verificar que NO falte ningún campo crítico
+            const requiredFields = ['cardNumber', 'cardName', 'foreignCurrencyAmount', 'foreignCurrencyCode'];
+            const missingCriticalFields = requiredFields.filter(field => !transaction.hasOwnProperty(field));
+            
+            if (missingCriticalFields.length > 0) {
+                console.error(`🚨 ERROR CRÍTICO: Transacción ${index} (${transaction.description}) OMITE campos críticos:`, missingCriticalFields);
+                console.error(`   Campos presentes:`, Object.keys(transaction));
+                console.error(`   Campos esperados:`, ['date', 'description', 'amount', 'type', ...requiredFields]);
+                
+                // Forzar la inclusión de campos faltantes
+                missingCriticalFields.forEach(field => {
+                    correctedTransaction[field] = null;
+                    console.warn(`   🔧 Campo ${field} forzado a null`);
+                });
+            }
+            
+            // Log de campos faltantes
+            const missingFields = [];
+            if (!transaction.cardNumber) missingFields.push('cardNumber');
+            if (!transaction.cardName) missingFields.push('cardName');
+            if (!transaction.foreignCurrencyAmount) missingFields.push('foreignCurrencyAmount');
+            if (!transaction.foreignCurrencyCode) missingFields.push('foreignCurrencyCode');
+            
+            if (missingFields.length > 0) {
+                console.warn(`⚠️ Transacción ${index} (${transaction.description}) le faltan campos:`, missingFields);
+                console.warn(`   Campos originales:`, Object.keys(transaction));
+            }
+            
+            return correctedTransaction;
+        });
+        
+        console.log(`✅ Datos corregidos: ${data.transactions.length} transacciones procesadas`);
+        return data;
+    };
+
+    // Función para validar y corregir transacciones por página
+    const validateAndCorrectTransactions = (transactions) => {
+        console.log('🔍 [DEBUG] Validando y corrigiendo transacciones por página...');
+        
+        if (!Array.isArray(transactions)) {
+            console.warn('⚠️ Transacciones no es un array, creando array vacío');
+            return [];
+        }
+        
+        // Corregir cada transacción
+        const correctedTransactions = transactions.map((transaction, index) => {
+            if (!transaction || typeof transaction !== 'object') {
+                console.warn(`⚠️ Transacción ${index} inválida, creando transacción por defecto`);
+                return {
+                    date: null,
+                    description: null,
+                    amount: null,
+                    type: null,
+                    group: null,
+                    cardNumber: null,
+                    cardName: null,
+                    foreignCurrencyAmount: null,
+                    foreignCurrencyCode: null
+                };
+            }
+            
+            // Asegurar que todos los campos requeridos existan
+            const correctedTransaction = {
+                date: transaction.date || null,
+                description: transaction.description || null,
+                amount: transaction.amount || null,
+                type: transaction.type || null,
+                group: transaction.group || null,
+                cardNumber: transaction.cardNumber || null,
+                cardName: transaction.cardName || null,
+                foreignCurrencyAmount: transaction.foreignCurrencyAmount || null,
+                foreignCurrencyCode: transaction.foreignCurrencyCode || null
+            };
+            
+            // Verificar que NO falte ningún campo crítico
+            const requiredFields = ['cardNumber', 'cardName', 'foreignCurrencyAmount', 'foreignCurrencyCode'];
+            const missingCriticalFields = requiredFields.filter(field => !transaction.hasOwnProperty(field));
+            
+            if (missingCriticalFields.length > 0) {
+                console.error(`🚨 ERROR CRÍTICO: Transacción ${index} (${transaction.description}) OMITE campos críticos:`, missingCriticalFields);
+                console.error(`   Campos presentes:`, Object.keys(transaction));
+                console.error(`   Campos esperados:`, ['date', 'description', 'amount', 'type', 'group', ...requiredFields]);
+                
+                // Forzar la inclusión de campos faltantes
+                missingCriticalFields.forEach(field => {
+                    correctedTransaction[field] = null;
+                    console.warn(`   🔧 Campo ${field} forzado a null`);
+                });
+            }
+            
+            // Log de campos faltantes
+            const missingFields = [];
+            if (!transaction.cardNumber) missingFields.push('cardNumber');
+            if (!transaction.cardName) missingFields.push('cardName');
+            if (!transaction.foreignCurrencyAmount) missingFields.push('foreignCurrencyAmount');
+            if (!transaction.foreignCurrencyCode) missingFields.push('foreignCurrencyCode');
+            
+            if (missingFields.length > 0) {
+                console.warn(`⚠️ Transacción ${index} (${transaction.description}) le faltan campos:`, missingFields);
+                console.warn(`   Campos originales:`, Object.keys(transaction));
+            }
+            
+            return correctedTransaction;
+        });
+        
+        console.log(`✅ Transacciones corregidas: ${correctedTransactions.length} transacciones procesadas`);
+        return correctedTransactions;
+    };
+
+    // Función para generar instrucciones comunes de análisis
+    const generateCommonInstructions = () => {
+        console.log('🔍 [DEBUG] Generando instrucciones comunes...');
+        const instructions = {
+            // Estructura JSON para análisis completo
+            completeAnalysisStructure: `{
+  "totalBalance": número_decimal (saldo total actual, puede ser 0),
+  "minimumPayment": número_decimal (pago mínimo requerido),
+  "dueDate": "YYYY-MM-DD" (fecha de vencimiento del pago),
+  "creditLimit": número_decimal (límite de crédito total),
+  "availableCredit": número_decimal (crédito disponible),
+  "previousBalance": número_decimal (saldo del periodo anterior),
+  "payments": número_decimal (pagos realizados en el periodo),
+  "charges": número_decimal (nuevos cargos del periodo),
+  "fees": número_decimal (comisiones cobradas),
+  "interest": número_decimal (intereses cobrados),
+  "bankName": "nombre_del_banco",
+  "cardHolderName": "nombre_completo_tarjetahabiente",
+  "lastFourDigits": "1234" (últimos 4 dígitos),
+  "statementDate": "YYYY-MM-DD" (fecha del estado de cuenta),
+  "transactions": [
+    {
+      "date": "YYYY-MM-DD",
+      "description": "descripción_transacción",
+      "amount": número_decimal,
+      "type": "cargo|pago|ajuste",
+      "cardNumber": "número_tarjeta" (número de la tarjeta que realizó la transacción),
+      "cardName": "nombre_tarjeta" (nombre del titular de la tarjeta),
+      "foreignCurrencyAmount": número_decimal (valor en moneda extranjera, si existe),
+      "foreignCurrencyCode": "código_moneda" (USD, EUR, etc., si existe)
+    }
+  ]
+}`,
+
+            // Estructura JSON para transacciones por página
+            transactionsStructure: `[
+  {
+    "date": "YYYY-MM-DD",
+    "description": "descripción_transacción",
+    "amount": número_decimal,
+    "type": "cargo|pago|ajuste",
+    "group": "pagos|comisiones|intereses|tarjeta_adicional|compras|general",
+    "cardNumber": "número_tarjeta" (número de la tarjeta que realizó la transacción),
+    "cardName": "nombre_tarjeta" (nombre del titular de la tarjeta),
+    "foreignCurrencyAmount": número_decimal (valor en moneda extranjera, si existe),
+    "foreignCurrencyCode": "código_moneda" (USD, EUR, etc., si existe)
+  }
+]`,
+
+            // Instrucciones críticas para campos principales
+            criticalFieldsInstructions: `INSTRUCCIONES CRÍTICAS PARA CAMPOS PRINCIPALES:
+- Para "payments": Usa el SUBTOTAL de la sección "PAGOS/CREDITOS" o "ABONOS" de la cabecera
+- Para "charges": Usa el SUBTOTAL de la sección "CONSUMOS DEL PERIODO" o "CARGOS" de la cabecera
+- Para "fees": Usa el SUBTOTAL de la sección "NOTAS DE DÉBITO" o "COMISIONES" de la cabecera
+- NO calcules estos valores sumando transacciones individuales
+- Usa los TOTALES que aparecen en los resúmenes de cabecera`,
+
+            // Instrucciones críticas para transacciones
+            criticalTransactionsInstructions: `INSTRUCCIONES CRÍTICAS PARA TRANSACCIONES:
+- Los estados de cuenta suelen tener SECCIONES AGRUPADAS con subtotales
+- PRIMER GRUPO: "PAGOS/CREDITOS" o "SALDO ANTERIOR" al inicio
+- SEGUNDO GRUPO: Comisiones, intereses, notas de débito
+- TERCER GRUPO: Consumos/compras del período
+- DEBES extraer TODAS las transacciones de TODAS las secciones agrupadas
+- NO omitas transacciones por estar en resúmenes o subtotales
+- Busca en TODA la página, especialmente en las secciones superiores
+- Revisa también secciones de "MOVIMIENTOS DEL PERIODO" o "DETALLE DE MOVIMIENTOS"`,
+
+            // Instrucciones para secciones agrupadas (solo transacciones)
+            groupedSectionsInstructions: `INSTRUCCIONES CRÍTICAS PARA SECCIONES AGRUPADAS:
+- Los estados de cuenta suelen tener SECCIONES AGRUPADAS con subtotales
+- PRIMER GRUPO: Generalmente "PAGOS/CREDITOS" o "SALDO ANTERIOR" al inicio
+- SEGUNDO GRUPO: Comisiones, intereses, notas de débito
+- TERCER GRUPO: Consumos/compras del período
+- DEBES extraer TODAS las transacciones de TODAS las secciones agrupadas
+- NO omitas transacciones por estar en resúmenes o subtotales
+- Busca en TODA la página, especialmente en las secciones superiores
+- Revisa también secciones de "MOVIMIENTOS DEL PERIODO" o "DETALLE DE MOVIMIENTOS"
+- Si hay un subtotal de grupo, extrae también las transacciones individuales que lo componen`,
+
+            // Interpretación de tipos de operación
+            operationTypesInstructions: `INTERPRETACIÓN CRÍTICA DE TIPOS DE OPERACIÓN:
+- **"DEV"** = DEVOLUCIÓN = tipo "pago" (crédito que reduce deuda)
+- **"CV"** = CRÉDITO = tipo "pago" (crédito que reduce deuda)
+- **"PAGO"** = PAGO = tipo "pago" (crédito que reduce deuda)
+- **"N/D"** = NOTA DE DÉBITO = tipo "cargo" (débito que aumenta deuda)
+- **"CONS."** = CONSUMO = tipo "cargo" (débito que aumenta deuda)
+- **"SALDO ANTERIOR"** = tipo "ajuste" (balance inicial)`,
+
+            // Interpretación de columnas de signo
+            signColumnsInstructions: `INTERPRETACIÓN CRÍTICA DE COLUMNAS DE SIGNO:
+- **Columna "+/-"**: 
+  - **"+"** = DÉBITO (aumenta deuda) = tipo "cargo"
+  - **"-"** = CRÉDITO (reduce deuda) = tipo "pago"
+  - **Vacía** = Revisar tipo de operación o descripción
+- **Columna "SIGNO"** o "INDICADOR":
+  - **"D"** = DÉBITO = tipo "cargo"
+  - **"C"** = CRÉDITO = tipo "pago"
+  - **"+"** = DÉBITO = tipo "cargo"
+  - **"-"** = CRÉDITO = tipo "pago"`,
+
+            // Lógica de tipos de transacción
+            transactionTypeLogic: `IMPORTANTE: El tipo de transacción debe basarse en:
+1. **PRIMERO**: El TIPO DE OPERACIÓN (DEV, CV, PAGO, N/D, CONS.)
+2. **SEGUNDO**: Las columnas de SIGNO (+/-, D/C, +, -)
+3. **TERCERO**: El monto (negativo = crédito, positivo = débito, pero no siempre)
+
+- Una transacción con tipo "DEV" siempre es un crédito, aunque el monto sea positivo
+- Una transacción con tipo "N/D" siempre es un débito, aunque el monto sea pequeño
+- Una transacción con signo "+" siempre es un débito, aunque el tipo de operación sea ambiguo
+- Una transacción con signo "-" siempre es un crédito, aunque el tipo de operación sea ambiguo`,
+
+            // Patrones específicos a buscar
+            specificPatterns: `PATRONES ESPECÍFICOS A BUSCAR EN TRANSACCIONES:
+- "SALDO ANTERIOR" o "BALANCE ANTERIOR" (es una transacción)
+- "PAGOS/CREDITOS" o "ABONOS" (extrae cada transacción individual)
+- "NOTAS DE DÉBITO" o "COMISIONES" (extrae cada cargo individual)
+- "CONSUMOS DEL PERIODO" o "MOVIMIENTOS" (extrae cada compra individual)
+- Transacciones con tipos como "CV", "DEV", "PAGO", "N/D", "CONS."`,
+
+            // Instrucciones para moneda extranjera
+            foreignCurrencyInstructions: `INSTRUCCIONES CRÍTICAS PARA MONEDA EXTRANJERA:
+- Si una transacción tiene un valor en moneda extranjera, NO uses ese valor como monto principal
+- El monto principal debe ser el valor en la moneda local (pesos, soles, etc.)
+- El valor en moneda extranjera va en "foreignCurrencyAmount"
+- El código de moneda extranjera va en "foreignCurrencyCode" (USD, EUR, GBP, etc.)
+- Si no hay moneda extranjera, usa null en ambos campos`,
+
+            // Instrucciones para tarjetas
+            cardInstructions: `INSTRUCCIONES CRÍTICAS PARA TARJETAS:
+- Cada transacción debe incluir información de la tarjeta que la realizó
+- "cardNumber": número completo o últimos dígitos de la tarjeta (principal o adicional)
+- "cardName": nombre del titular de la tarjeta (principal o adicional)
+- Si no puedes identificar la tarjeta específica, usa null en ambos campos
+- Los bancos suelen agrupar transacciones por tarjeta, identifica a qué tarjeta pertenece cada transacción`,
+
+            // Instrucciones para datos no reconocidos
+            unrecognizedDataInstructions: `INSTRUCCIONES CRÍTICAS PARA DATOS NO RECONOCIDOS:
+- Si NO puedes reconocer claramente algún dato, NO lo inventes ni lo adivines
+- Para campos numéricos: usa null si no está visible o es ambiguo
+- Para campos de texto: usa null si no está legible o es ambiguo
+- Para fechas: usa null si no están claras o son ambiguas
+- Para transacciones: si no puedes determinar el tipo, monto o fecha, usa null en esos campos
+- Es MEJOR dejar un campo vacío (null) que proporcionar información incorrecta
+- Si tienes dudas sobre algún dato, déjalo como null`,
+
+            // Instrucciones finales para análisis completo
+            finalInstructionsComplete: `Devuelve SOLO el JSON, sin texto adicional
+Si un campo no está visible, usa null
+Para montos usa números decimales (ej: 1234.56, no "$1,234.56")
+Para fechas usa formato YYYY-MM-DD
+Los montos negativos indican pagos/créditos
+Lee cuidadosamente todos los números y fechas
+Busca información en toda la página, no solo en el resumen`,
+
+            // Instrucciones finales para transacciones
+            finalInstructionsTransactions: `Devuelve SOLO el array JSON de transacciones, sin texto adicional
+Si no hay transacciones en esta página, devuelve un array vacío: []
+Para montos usa números decimales (ej: 1234.56)
+Las fechas en formato YYYY-MM-DD
+Los montos negativos indican pagos/créditos
+Busca movimientos, compras, pagos, cargos, etc. de TODOS los grupos`
+        };
+        
+        console.log('🔍 [DEBUG] Instrucciones generadas exitosamente:', Object.keys(instructions));
+        return instructions;
+    };
+
     // MOVED: useEffect se movió al final después de definir todas las funciones
 
     const loadUserPatterns = useCallback(async () => {
@@ -85,11 +405,11 @@ const PDFStatementAnalyzer = ({ db, user, appId, onStatementAnalyzed, onNavigate
             const settings = await loadUserSettings(db, user.uid, appId);
             setUserSettings(settings);
             
-            // Aplicar la IA por defecto del usuario
-            if (settings.defaultAI && settings.defaultAI !== selectedAI) {
-                setSelectedAI(settings.defaultAI);
-                console.log('IA por defecto aplicada:', settings.defaultAI);
-            }
+            // Aplicar la IA por defecto del usuario (COMENTADO TEMPORALMENTE PARA DEBUG)
+            // if (settings.defaultAI && settings.defaultAI !== selectedAI) {
+            //     setSelectedAI(settings.defaultAI);
+            //     console.log('IA por defecto aplicada:', settings.defaultAI);
+            // }
         } catch (error) {
             console.error('Error cargando configuraciones del usuario:', error);
         }
@@ -453,6 +773,59 @@ const PDFStatementAnalyzer = ({ db, user, appId, onStatementAnalyzed, onNavigate
                 logParsingError(new Error(result.error), content, 'Statement Analysis');
             }
             
+            // 🔧 FORZAR ESTRUCTURA COMPLETA - Añadir campos faltantes automáticamente
+            if (result && result.transactions && Array.isArray(result.transactions)) {
+                console.log('🔧 [FORZADO] Añadiendo campos faltantes a transacciones...');
+                
+                result.transactions = result.transactions.map((transaction, index) => {
+                    if (!transaction || typeof transaction !== 'object') {
+                        console.warn(`⚠️ Transacción ${index} inválida, creando por defecto`);
+                        return {
+                            date: null,
+                            description: null,
+                            amount: null,
+                            type: null,
+                            cardNumber: null,
+                            cardName: null,
+                            foreignCurrencyAmount: null,
+                            foreignCurrencyCode: null
+                        };
+                    }
+                    
+                    // Extraer información del encabezado para usar como fallback
+                    const headerCardNumber = result.lastFourDigits || '0000';
+                    const headerCardName = result.cardHolderName || 'Titular Principal';
+                    
+                    // Asegurar que todos los campos requeridos existan
+                    const forcedTransaction = {
+                        date: transaction.date || null,
+                        description: transaction.description || null,
+                        amount: transaction.amount || null,
+                        type: transaction.type || null,
+                        cardNumber: transaction.cardNumber || headerCardNumber,
+                        cardName: transaction.cardName || headerCardName,
+                        foreignCurrencyAmount: transaction.foreignCurrencyAmount || null,
+                        foreignCurrencyCode: transaction.foreignCurrencyCode || null
+                    };
+                    
+                    // Log de campos forzados
+                    const missingFields = [];
+                    if (!transaction.cardNumber) missingFields.push('cardNumber');
+                    if (!transaction.cardName) missingFields.push('cardName');
+                    if (!transaction.foreignCurrencyAmount) missingFields.push('foreignCurrencyAmount');
+                    if (!transaction.foreignCurrencyCode) missingFields.push('foreignCurrencyCode');
+                    
+                    if (missingFields.length > 0) {
+                        console.log(`🔧 [FORZADO] Transacción ${index} (${transaction.description}): campos añadidos:`, missingFields);
+                        console.log(`   cardNumber: ${forcedTransaction.cardNumber}, cardName: ${forcedTransaction.cardName}`);
+                    }
+                    
+                    return forcedTransaction;
+                });
+                
+                console.log(`✅ [FORZADO] ${result.transactions.length} transacciones procesadas con estructura completa`);
+            }
+            
             return result;
         } catch (error) {
             console.error('💥 Error crítico en parsing:', error);
@@ -480,93 +853,43 @@ const PDFStatementAnalyzer = ({ db, user, appId, onStatementAnalyzed, onNavigate
             
             const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
             
+            const instructions = generateCommonInstructions();
+            
+            // Log para debug - verificar que las instrucciones se generen correctamente
+            console.log('🔍 [DEBUG] Instrucciones generadas:', {
+                hasCompleteStructure: !!instructions.completeAnalysisStructure,
+                hasCardInstructions: !!instructions.cardInstructions,
+                hasForeignCurrencyInstructions: !!instructions.foreignCurrencyInstructions
+            });
+            
             const prompt = `Analiza este estado de cuenta de tarjeta de crédito y extrae la siguiente información en formato JSON estricto:
 
-{
-  "totalBalance": número_decimal (saldo total actual, puede ser 0),
-  "minimumPayment": número_decimal (pago mínimo requerido),
-  "dueDate": "YYYY-MM-DD" (fecha de vencimiento del pago),
-  "creditLimit": número_decimal (límite de crédito total),
-  "availableCredit": número_decimal (crédito disponible),
-  "previousBalance": número_decimal (saldo del periodo anterior),
-  "payments": número_decimal (pagos realizados en el periodo),
-  "charges": número_decimal (nuevos cargos del periodo),
-  "fees": número_decimal (comisiones cobradas),
-  "interest": número_decimal (intereses cobrados),
-  "bankName": "nombre_del_banco",
-  "cardHolderName": "nombre_completo_tarjetahabiente",
-  "lastFourDigits": "1234" (últimos 4 dígitos),
-  "statementDate": "YYYY-MM-DD" (fecha del estado de cuenta),
-  "transactions": [
-    {
-      "date": "YYYY-MM-DD",
-      "description": "descripción_transacción",
-      "amount": número_decimal,
-      "type": "cargo|pago|ajuste"
-    }
-  ]
-}
+${instructions.completeAnalysisStructure}
 
-INSTRUCCIONES CRÍTICAS PARA CAMPOS PRINCIPALES:
-- Para "payments": Usa el SUBTOTAL de la sección "PAGOS/CREDITOS" o "ABONOS" de la cabecera
-- Para "charges": Usa el SUBTOTAL de la sección "CONSUMOS DEL PERIODO" o "CARGOS" de la cabecera
-- Para "fees": Usa el SUBTOTAL de la sección "NOTAS DE DÉBITO" o "COMISIONES" de la cabecera
-- NO calcules estos valores sumando transacciones individuales
-- Usa los TOTALES que aparecen en los resúmenes de cabecera
+## 📋 INSTRUCCIONES PARA GEMINI:
+- Extrae fechas, descripciones, montos y tipos de transacciones
+- Si encuentras información de tarjeta o moneda extranjera, inclúyela
+- Si no la encuentras, no te preocupes - el sistema la completará
+- Enfócate en ser preciso con las transacciones básicas
 
-INSTRUCCIONES CRÍTICAS PARA TRANSACCIONES:
-- Los estados de cuenta suelen tener SECCIONES AGRUPADAS con subtotales
-- PRIMER GRUPO: "PAGOS/CREDITOS" o "SALDO ANTERIOR" al inicio
-- SEGUNDO GRUPO: Comisiones, intereses, notas de débito
-- TERCER GRUPO: Consumos/compras del período
-- DEBES extraer TODAS las transacciones de TODAS las secciones agrupadas
-- NO omitas transacciones por estar en resúmenes o subtotales
-- Busca en TODA la página, especialmente en las secciones superiores
-- Revisa también secciones de "MOVIMIENTOS DEL PERIODO" o "DETALLE DE MOVIMIENTOS"
+${instructions.criticalFieldsInstructions}
 
-INTERPRETACIÓN CRÍTICA DE TIPOS DE OPERACIÓN:
-- **"DEV"** = DEVOLUCIÓN = tipo "pago" (crédito que reduce deuda)
-- **"CV"** = CRÉDITO = tipo "pago" (crédito que reduce deuda)
-- **"PAGO"** = PAGO = tipo "pago" (crédito que reduce deuda)
-- **"N/D"** = NOTA DE DÉBITO = tipo "cargo" (débito que aumenta deuda)
-- **"CONS."** = CONSUMO = tipo "cargo" (débito que aumenta deuda)
-- **"SALDO ANTERIOR"** = tipo "ajuste" (balance inicial)
+${instructions.criticalTransactionsInstructions}
 
-INTERPRETACIÓN CRÍTICA DE COLUMNAS DE SIGNO:
-- **Columna "+/-"**: 
-  - **"+"** = DÉBITO (aumenta deuda) = tipo "cargo"
-  - **"-"** = CRÉDITO (reduce deuda) = tipo "pago"
-  - **Vacía** = Revisar tipo de operación o descripción
-- **Columna "SIGNO"** o "INDICADOR":
-  - **"D"** = DÉBITO = tipo "cargo"
-  - **"C"** = CRÉDITO = tipo "pago"
-  - **"+"** = DÉBITO = tipo "cargo"
-  - **"-"** = CRÉDITO = tipo "pago"
+${instructions.operationTypesInstructions}
 
-IMPORTANTE: El tipo de transacción debe basarse en:
-1. **PRIMERO**: El TIPO DE OPERACIÓN (DEV, CV, PAGO, N/D, CONS.)
-2. **SEGUNDO**: Las columnas de SIGNO (+/-, D/C, +, -)
-3. **TERCERO**: El monto (negativo = crédito, positivo = débito, pero no siempre)
+${instructions.signColumnsInstructions}
 
-- Una transacción con tipo "DEV" siempre es un crédito, aunque el monto sea positivo
-- Una transacción con tipo "N/D" siempre es un débito, aunque el monto sea pequeño
-- Una transacción con signo "+" siempre es un débito, aunque el tipo de operación sea ambiguo
-- Una transacción con signo "-" siempre es un crédito, aunque el tipo de operación sea ambiguo
+${instructions.transactionTypeLogic}
 
-PATRONES ESPECÍFICOS A BUSCAR EN TRANSACCIONES:
-- "SALDO ANTERIOR" o "BALANCE ANTERIOR" (es una transacción)
-- "PAGOS/CREDITOS" o "ABONOS" (extrae cada transacción individual)
-- "NOTAS DE DÉBITO" o "COMISIONES" (extrae cada cargo individual)
-- "CONSUMOS DEL PERIODO" o "MOVIMIENTOS" (extrae cada compra individual)
-- Transacciones con tipos como "CV", "DEV", "PAGO", "N/D", "CONS."
+${instructions.specificPatterns}
 
-Devuelve SOLO el JSON, sin texto adicional
-Si un campo no está visible, usa null
-Para montos usa números decimales (ej: 1234.56, no "$1,234.56")
-Para fechas usa formato YYYY-MM-DD
-Los montos negativos indican pagos/créditos
-Lee cuidadosamente todos los números y fechas
-Busca información en toda la página, no solo en el resumen`;
+${instructions.finalInstructionsComplete}`;
+
+            // Log para debug - verificar que el prompt se construya correctamente
+            console.log('🔍 [DEBUG] Prompt construido correctamente. Longitud:', prompt.length);
+            console.log('🔍 [DEBUG] Prompt incluye campos de tarjeta:', prompt.includes('cardNumber'));
+            console.log('🔍 [DEBUG] Prompt incluye campos de moneda extranjera:', prompt.includes('foreignCurrencyAmount'));
 
             const imagePart = {
                 inlineData: {
@@ -575,6 +898,9 @@ Busca información en toda la página, no solo en el resumen`;
                 }
             };
 
+            // Log para debug - verificar el prompt completo que se envía
+            console.log('🔍 [DEBUG] Prompt completo enviado a Gemini:', prompt.substring(0, 500) + '...');
+            
             const result = await model.generateContent([prompt, imagePart]);
             const response = await result.response;
             const content = response.text();
@@ -589,8 +915,19 @@ Busca información en toda la página, no solo en el resumen`;
                 throw new Error(`Gemini devolvió JSON inválido: ${analysisData.message}`);
             }
             
-            console.log('Datos extraídos con Gemini:', analysisData);
-            return analysisData;
+            // Validar y corregir campos faltantes
+            const correctedData = validateAndCorrectAnalysisData(analysisData);
+            
+            console.log('🔍 [GEMINI DEBUG] Datos extraídos con Gemini:', analysisData);
+            console.log('🔍 [GEMINI DEBUG] Estructura de transacciones:', analysisData.transactions?.map(t => ({
+                description: t.description,
+                fields: Object.keys(t),
+                hasCardNumber: t.hasOwnProperty('cardNumber'),
+                hasCardName: t.hasOwnProperty('cardName'),
+                hasForeignCurrency: t.hasOwnProperty('foreignCurrencyAmount')
+            })));
+            console.log('🔍 [GEMINI DEBUG] Datos corregidos:', correctedData);
+            return correctedData;
             
         } catch (error) {
             console.error('Error al analizar con Gemini:', error);
@@ -635,13 +972,21 @@ Busca información en toda la página, no solo en el resumen`;
             
             const prompt = `Analiza esta página ${pageNumber} de un estado de cuenta de tarjeta de crédito y extrae TODAS las transacciones en formato JSON estricto:
 
+IMPORTANTE: DEBES incluir TODOS los campos mostrados en la estructura JSON siguiente, incluyendo:
+- Los campos de tarjeta: "cardNumber" y "cardName" en CADA transacción
+- Los campos de moneda extranjera: "foreignCurrencyAmount" y "foreignCurrencyCode" en CADA transacción
+
 [
   {
     "date": "YYYY-MM-DD",
     "description": "descripción_transacción",
     "amount": número_decimal,
     "type": "cargo|pago|ajuste",
-    "group": "pagos|comisiones|intereses|tarjeta_adicional|compras|general"
+    "group": "pagos|comisiones|intereses|tarjeta_adicional|compras|general",
+    "cardNumber": "número_tarjeta" (número de la tarjeta que realizó la transacción),
+    "cardName": "nombre_tarjeta" (nombre del titular de la tarjeta),
+    "foreignCurrencyAmount": número_decimal (valor en moneda extranjera, si existe),
+    "foreignCurrencyCode": "código_moneda" (USD, EUR, etc., si existe)
   }
 ]
 
@@ -692,6 +1037,29 @@ PATRONES ESPECÍFICOS A BUSCAR EN TRANSACCIONES:
 - "CONSUMOS DEL PERIODO" o "MOVIMIENTOS" (extrae cada compra individual)
 - Transacciones con tipos como "CV", "DEV", "PAGO", "N/D", "CONS."
 
+INSTRUCCIONES CRÍTICAS PARA MONEDA EXTRANJERA:
+- Si una transacción tiene un valor en moneda extranjera, NO uses ese valor como monto principal
+- El monto principal debe ser el valor en la moneda local (pesos, soles, etc.)
+- El valor en moneda extranjera va en "foreignCurrencyAmount"
+- El código de moneda extranjera va en "foreignCurrencyCode" (USD, EUR, GBP, etc.)
+- Si no hay moneda extranjera, usa null en ambos campos
+
+INSTRUCCIONES CRÍTICAS PARA TARJETAS:
+- Cada transacción debe incluir información de la tarjeta que la realizó
+- "cardNumber": número completo o últimos dígitos de la tarjeta (principal o adicional)
+- "cardName": nombre del titular de la tarjeta (principal o adicional)
+- Si no puedes identificar la tarjeta específica, usa null en ambos campos
+- Los bancos suelen agrupar transacciones por tarjeta, identifica a qué tarjeta pertenece cada transacción
+
+INSTRUCCIONES CRÍTICAS PARA DATOS NO RECONOCIDOS:
+- Si NO puedes reconocer claramente algún dato, NO lo inventes ni lo adivines
+- Para campos numéricos: usa null si no está visible o es ambiguo
+- Para campos de texto: usa null si no está legible o es ambiguo
+- Para fechas: usa null si no están claras o son ambiguas
+- Para transacciones: si no puedes determinar el tipo, monto o fecha, usa null en esos campos
+- Es MEJOR dejar un campo vacío (null) que proporcionar información incorrecta
+- Si tienes dudas sobre algún dato, déjalo como null
+
 Devuelve SOLO el array JSON de transacciones, sin texto adicional
 Si no hay transacciones en esta página, devuelve un array vacío: []
 Para montos usa números decimales (ej: 1234.56)
@@ -706,6 +1074,9 @@ Busca movimientos, compras, pagos, cargos, etc. de TODOS los grupos`;
                 }
             };
 
+            // Log para debug - verificar el prompt completo que se envía
+            console.log(`🔍 [DEBUG] Prompt completo enviado a Gemini página ${pageNumber}:`, prompt.substring(0, 500) + '...');
+            
             const result = await model.generateContent([prompt, imagePart]);
             const response = await result.response;
             const content = response.text();
@@ -714,7 +1085,11 @@ Busca movimientos, compras, pagos, cargos, etc. de TODOS los grupos`;
             const transactions = parseTransactionsResponseLocal(content);
             console.log(`Transacciones extraídas página ${pageNumber}:`, transactions);
             
-            return transactions;
+            // Validar y corregir transacciones
+            const correctedTransactions = validateAndCorrectTransactions(transactions);
+            console.log(`Transacciones corregidas página ${pageNumber}:`, correctedTransactions);
+            
+            return correctedTransactions;
         } catch (error) {
             console.error(`Error con Gemini página ${pageNumber}:`, error);
             return [];
@@ -743,13 +1118,21 @@ Busca movimientos, compras, pagos, cargos, etc. de TODOS los grupos`;
                                 type: "text",
                                 text: `Analiza esta página ${pageNumber} de un estado de cuenta de tarjeta de crédito y extrae TODAS las transacciones en formato JSON estricto:
 
+IMPORTANTE: DEBES incluir TODOS los campos mostrados en la estructura JSON siguiente, incluyendo:
+- Los campos de tarjeta: "cardNumber" y "cardName" en CADA transacción
+- Los campos de moneda extranjera: "foreignCurrencyAmount" y "foreignCurrencyCode" en CADA transacción
+
 [
   {
     "date": "YYYY-MM-DD",
     "description": "descripción_transacción",
     "amount": número_decimal,
     "type": "cargo|pago|ajuste",
-    "group": "pagos|comisiones|intereses|tarjeta_adicional|compras|general"
+    "group": "pagos|comisiones|intereses|tarjeta_adicional|compras|general",
+    "cardNumber": "número_tarjeta" (número de la tarjeta que realizó la transacción),
+    "cardName": "nombre_tarjeta" (nombre del titular de la tarjeta),
+    "foreignCurrencyAmount": número_decimal (valor en moneda extranjera, si existe),
+    "foreignCurrencyCode": "código_moneda" (USD, EUR, etc., si existe)
   }
 ]
 
@@ -793,6 +1176,29 @@ IMPORTANTE: El tipo de transacción debe basarse en:
 - Una transacción con signo "+" siempre es un débito, aunque el tipo de operación sea ambiguo
 - Una transacción con signo "-" siempre es un crédito, aunque el tipo de operación sea ambiguo
 
+INSTRUCCIONES CRÍTICAS PARA MONEDA EXTRANJERA:
+- Si una transacción tiene un valor en moneda extranjera, NO uses ese valor como monto principal
+- El monto principal debe ser el valor en la moneda local (pesos, soles, etc.)
+- El valor en moneda extranjera va en "foreignCurrencyAmount"
+- El código de moneda extranjera va en "foreignCurrencyCode" (USD, EUR, GBP, etc.)
+- Si no hay moneda extranjera, usa null en ambos campos
+
+INSTRUCCIONES CRÍTICAS PARA TARJETAS:
+- Cada transacción debe incluir información de la tarjeta que la realizó
+- "cardNumber": número completo o últimos dígitos de la tarjeta (principal o adicional)
+- "cardName": nombre del titular de la tarjeta (principal o adicional)
+- Si no puedes identificar la tarjeta específica, usa null en ambos campos
+- Los bancos suelen agrupar transacciones por tarjeta, identifica a qué tarjeta pertenece cada transacción
+
+INSTRUCCIONES CRÍTICAS PARA DATOS NO RECONOCIDOS:
+- Si NO puedes reconocer claramente algún dato, NO lo inventes ni lo adivines
+- Para campos numéricos: usa null si no está visible o es ambiguo
+- Para campos de texto: usa null si no está legible o es ambiguo
+- Para fechas: usa null si no están claras o son ambiguas
+- Para transacciones: si no puedes determinar el tipo, monto o fecha, usa null en esos campos
+- Es MEJOR dejar un campo vacío (null) que proporcionar información incorrecta
+- Si tienes dudas sobre algún dato, déjalo como null
+
 Devuelve SOLO el array JSON de transacciones, sin texto adicional
 Si no hay transacciones en esta página, devuelve un array vacío: []
 Para montos usa números decimales (ej: 1234.56)
@@ -831,8 +1237,12 @@ Busca movimientos, compras, pagos, cargos, etc. de TODOS los grupos`
                 throw new Error(`OpenAI devolvió JSON inválido: ${analysisData.message}`);
             }
             
+            // Validar y corregir transacciones
+            const correctedData = validateAndCorrectTransactions(analysisData);
+            
             console.log(`🔍 [DEBUG] Datos extraídos página ${pageNumber}:`, analysisData);
-            return analysisData;
+            console.log(`🔍 [DEBUG] Datos corregidos página ${pageNumber}:`, correctedData);
+            return correctedData;
             
         } catch (error) {
             console.error(`Error al analizar página ${pageNumber} con OpenAI:`, error);
@@ -851,8 +1261,60 @@ Busca movimientos, compras, pagos, cargos, etc. de TODOS los grupos`
                 return [];
             }
             
-            console.log(`✅ ${transactions.length} transacciones parseadas exitosamente`);
-            return transactions;
+            // 🔧 FORZAR ESTRUCTURA COMPLETA - Añadir campos faltantes automáticamente
+            console.log('🔧 [FORZADO] Añadiendo campos faltantes a transacciones por página...');
+            
+            const forcedTransactions = transactions.map((transaction, index) => {
+                if (!transaction || typeof transaction !== 'object') {
+                    console.warn(`⚠️ Transacción ${index} inválida, creando por defecto`);
+                    return {
+                        date: null,
+                        description: null,
+                        amount: null,
+                        type: null,
+                        group: null,
+                        cardNumber: null,
+                        cardName: null,
+                        foreignCurrencyAmount: null,
+                        foreignCurrencyCode: null
+                    };
+                }
+                
+                // Usar valores por defecto para campos de tarjeta (se pueden inferir del contexto)
+                const defaultCardNumber = '0000';
+                const defaultCardName = 'Titular Principal';
+                
+                // Asegurar que todos los campos requeridos existan
+                const forcedTransaction = {
+                    date: transaction.date || null,
+                    description: transaction.description || null,
+                    amount: transaction.amount || null,
+                    type: transaction.type || null,
+                    group: transaction.group || null,
+                    cardNumber: transaction.cardNumber || defaultCardNumber,
+                    cardName: transaction.cardName || defaultCardName,
+                    foreignCurrencyAmount: transaction.foreignCurrencyAmount || null,
+                    foreignCurrencyCode: transaction.foreignCurrencyCode || null
+                };
+                
+                // Log de campos forzados
+                const missingFields = [];
+                if (!transaction.cardNumber) missingFields.push('cardNumber');
+                if (!transaction.cardName) missingFields.push('cardName');
+                if (!transaction.foreignCurrencyAmount) missingFields.push('foreignCurrencyAmount');
+                if (!transaction.foreignCurrencyCode) missingFields.push('foreignCurrencyCode');
+                
+                if (missingFields.length > 0) {
+                    console.log(`🔧 [FORZADO] Transacción ${index} (${transaction.description}): campos añadidos:`, missingFields);
+                    console.log(`   cardNumber: ${forcedTransaction.cardNumber}, cardName: ${forcedTransaction.cardName}`);
+                }
+                
+                return forcedTransaction;
+            });
+            
+            console.log(`✅ [FORZADO] ${forcedTransactions.length} transacciones procesadas con estructura completa`);
+            return forcedTransactions;
+            
         } catch (error) {
             console.error('💥 Error crítico parseando transacciones:', error);
             logParsingError(error, content, 'Transactions Parsing');
@@ -958,6 +1420,15 @@ PATRONES ESPECÍFICOS A BUSCAR EN TRANSACCIONES:
 - "CONSUMOS DEL PERIODO" o "MOVIMIENTOS" (extrae cada compra individual)
 - Transacciones con tipos como "CV", "DEV", "PAGO", "N/D", "CONS."
 
+INSTRUCCIONES CRÍTICAS PARA DATOS NO RECONOCIDOS:
+- Si NO puedes reconocer claramente algún dato, NO lo inventes ni lo adivines
+- Para campos numéricos: usa null si no está visible o es ambiguo
+- Para campos de texto: usa null si no está legible o es ambiguo
+- Para fechas: usa null si no están claras o son ambiguas
+- Para transacciones: si no puedes determinar el tipo, monto o fecha, usa null en esos campos
+- Es MEJOR dejar un campo vacío (null) que proporcionar información incorrecta
+- Si tienes dudas sobre algún dato, déjalo como null
+
 Devuelve SOLO el JSON, sin texto adicional
 Si un campo no está visible, usa null
 Para montos usa números decimales (ej: 1234.56, no "$1,234.56")
@@ -990,8 +1461,12 @@ Busca información en toda la página, no solo en el resumen`
                 throw new Error(`OpenAI devolvió JSON inválido: ${analysisData.message}`);
             }
             
+            // Validar y corregir campos faltantes
+            const correctedData = validateAndCorrectAnalysisData(analysisData);
+            
             console.log('Datos extraídos:', analysisData);
-            return analysisData;
+            console.log('Datos corregidos:', correctedData);
+            return correctedData;
             
         } catch (error) {
             console.error('Error al analizar con OpenAI:', error);
@@ -1409,8 +1884,38 @@ Busca información en toda la página, no solo en el resumen`
             
             // Actualizar la tarjeta con los nuevos datos (solo si es más reciente)
             if (shouldUpdateCard) {
-                await updateCardWithStatementData(selectedCardData.id, analysisData);
-                console.log('✅ Tarjeta actualizada con datos más recientes');
+                try {
+                    // Obtener resumen de cambios antes de actualizar
+                    const changesSummary = getCardUpdateSummary(selectedCardData, analysisData);
+                    
+                    await updateCardWithStatementData(selectedCardData.id, analysisData);
+                    console.log('✅ Tarjeta actualizada con datos más recientes');
+                    
+                    // Mostrar notificación de actualización con detalles
+                    if (changesSummary.length > 0) {
+                        showNotification(
+                            'success',
+                            '🔄 Tarjeta Actualizada',
+                            `Los datos de "${selectedCardData.name}" se han actualizado:\n${changesSummary.join('\n')}`,
+                            8000
+                        );
+                    } else {
+                        showNotification(
+                            'success',
+                            '🔄 Tarjeta Actualizada',
+                            `Los datos de "${selectedCardData.name}" se han actualizado con la información más reciente del estado de cuenta.`,
+                            6000
+                        );
+                    }
+                } catch (updateError) {
+                    console.error('❌ Error al actualizar tarjeta:', updateError);
+                    showNotification(
+                        'warning',
+                        '⚠️ Actualización Parcial',
+                        `El estado de cuenta se guardó correctamente, pero no se pudieron actualizar todos los datos de la tarjeta.`,
+                        8000
+                    );
+                }
             } else {
                 console.log('⏭️ Estado de cuenta anterior - tarjeta no actualizada');
             }
@@ -1593,6 +2098,20 @@ Busca información en toda la página, no solo en el resumen`
     // Validar si el estado de cuenta es más reciente que el actual
     const shouldUpdateCardData = async (cardData, analysisData) => {
         try {
+            console.log('🔍 Validando si se debe actualizar la tarjeta...');
+            console.log('📊 Datos de la tarjeta actual:', {
+                lastStatementDate: cardData.lastStatementDate,
+                currentBalance: cardData.currentBalance,
+                limit: cardData.limit,
+                dueDate: cardData.dueDate
+            });
+            console.log('📊 Datos del nuevo análisis:', {
+                statementDate: analysisData.statementDate,
+                totalBalance: analysisData.totalBalance,
+                creditLimit: analysisData.creditLimit,
+                dueDate: analysisData.dueDate
+            });
+
             // Si no hay fecha del estado de cuenta, no actualizar
             if (!analysisData.statementDate) {
                 console.log('⚠️ Sin fecha de estado de cuenta, no actualizando tarjeta');
@@ -1609,15 +2128,50 @@ Busca información en toda la página, no solo en el resumen`
             const newStatementDate = new Date(analysisData.statementDate);
             const lastStatementDate = new Date(cardData.lastStatementDate);
 
-            const isNewer = newStatementDate >= lastStatementDate;
+            const isNewer = newStatementDate > lastStatementDate;
+            const isSameDate = newStatementDate.getTime() === lastStatementDate.getTime();
             
-            console.log('Comparación de fechas:', {
+            console.log('📅 Comparación de fechas:', {
                 nuevaFecha: analysisData.statementDate,
                 fechaActual: cardData.lastStatementDate,
-                esMasReciente: isNewer
+                esMasReciente: isNewer,
+                esMismaFecha: isSameDate
             });
 
-            return isNewer;
+            // Si es más reciente, siempre actualizar
+            if (isNewer) {
+                console.log('✅ Estado de cuenta más reciente - actualizando tarjeta');
+                return true;
+            }
+
+            // Si es la misma fecha, verificar si hay información más completa
+            if (isSameDate) {
+                console.log('📅 Misma fecha - verificando si hay información más completa...');
+                
+                // Verificar si hay información más completa o actualizada
+                const hasMoreCompleteInfo = (
+                    // Tener saldo más actualizado
+                    (analysisData.totalBalance !== null && analysisData.totalBalance !== undefined) ||
+                    // Tener límite de crédito más actualizado
+                    (analysisData.creditLimit !== null && analysisData.creditLimit !== undefined) ||
+                    // Tener fecha de vencimiento más actualizada
+                    (analysisData.dueDate !== null && analysisData.dueDate !== undefined) ||
+                    // Tener más transacciones o información más detallada
+                    (analysisData.transactions && analysisData.transactions.length > 0)
+                );
+
+                if (hasMoreCompleteInfo) {
+                    console.log('✅ Misma fecha pero información más completa - actualizando tarjeta');
+                    return true;
+                } else {
+                    console.log('⏭️ Misma fecha y sin información adicional - no actualizando');
+                    return false;
+                }
+            }
+
+            // Si es anterior, no actualizar
+            console.log('⏭️ Estado de cuenta anterior - no actualizando tarjeta');
+            return false;
             
         } catch (error) {
             console.error('Error al validar fechas:', error);
@@ -1629,37 +2183,104 @@ Busca información en toda la página, no solo en el resumen`
     // Actualizar tarjeta con datos del estado de cuenta
     const updateCardWithStatementData = async (cardId, analysisData) => {
         try {
-            console.log('Actualizando tarjeta con datos del análisis...');
+            console.log('🔄 Actualizando tarjeta con datos del análisis...');
             
             const cardRef = doc(db, 'artifacts', appId, 'users', user.uid, 'creditCards', cardId);
             
+            // Preparar datos de actualización
             const updateData = {
-                // Actualizar saldo actual
-                currentBalance: analysisData.totalBalance || 0,
-                
-                // Actualizar límite si está disponible
-                ...(analysisData.creditLimit && { limit: analysisData.creditLimit }),
-                
-                // Actualizar fechas importantes
-                ...(analysisData.dueDate && { dueDate: analysisData.dueDate }),
-                
-                // Actualizar fecha del último estado de cuenta procesado
-                lastStatementDate: analysisData.statementDate || new Date().toISOString().split('T')[0],
-                
-                // Metadatos
+                // Metadatos de actualización
                 lastUpdated: new Date(),
                 lastAnalyzedAt: new Date()
             };
             
-            console.log('Actualizando tarjeta con datos:', updateData);
-            await updateDoc(cardRef, updateData);
+            // Solo actualizar campos si tienen valores válidos
+            if (analysisData.totalBalance !== null && analysisData.totalBalance !== undefined) {
+                updateData.currentBalance = analysisData.totalBalance;
+                console.log('💰 Actualizando saldo actual:', analysisData.totalBalance);
+            }
             
-            console.log('✅ Tarjeta actualizada exitosamente');
+            if (analysisData.creditLimit !== null && analysisData.creditLimit !== undefined) {
+                updateData.limit = analysisData.creditLimit;
+                console.log('💳 Actualizando límite de crédito:', analysisData.creditLimit);
+            }
+            
+            if (analysisData.dueDate) {
+                updateData.dueDate = analysisData.dueDate;
+                console.log('📅 Actualizando fecha de vencimiento:', analysisData.dueDate);
+            }
+            
+            if (analysisData.statementDate) {
+                updateData.lastStatementDate = analysisData.statementDate;
+                console.log('📊 Actualizando fecha del último estado de cuenta:', analysisData.statementDate);
+            }
+            
+            // Actualizar información del banco si está disponible y es diferente
+            if (analysisData.bankName) {
+                updateData.bank = await encryptText(analysisData.bankName, user.uid);
+                console.log('🏦 Actualizando nombre del banco:', analysisData.bankName);
+            }
+            
+            // Actualizar nombre del titular si está disponible y es diferente
+            if (analysisData.cardHolderName) {
+                updateData.name = await encryptText(analysisData.cardHolderName, user.uid);
+                console.log('👤 Actualizando nombre del titular:', analysisData.cardHolderName);
+            }
+            
+            // Actualizar últimos 4 dígitos si están disponibles
+            if (analysisData.lastFourDigits) {
+                updateData.cardNumber = await encryptText(`****${analysisData.lastFourDigits}`, user.uid);
+                console.log('🔢 Actualizando últimos 4 dígitos:', analysisData.lastFourDigits);
+            }
+            
+            console.log('📝 Datos de actualización preparados:', updateData);
+            
+            // Solo actualizar si hay campos para actualizar
+            if (Object.keys(updateData).length > 1) { // Más de 1 porque siempre incluye lastUpdated
+                await updateDoc(cardRef, updateData);
+                console.log('✅ Tarjeta actualizada exitosamente con', Object.keys(updateData).length - 1, 'campos');
+            } else {
+                console.log('ℹ️ No hay campos nuevos para actualizar');
+            }
             
         } catch (error) {
-            console.error('Error al actualizar tarjeta:', error);
+            console.error('❌ Error al actualizar tarjeta:', error);
             // No fallar si no se puede actualizar la tarjeta
+            throw error; // Re-lanzar para que el llamador pueda manejarlo
         }
+    };
+
+    // Función para obtener un resumen de los cambios en la tarjeta
+    const getCardUpdateSummary = (cardData, analysisData) => {
+        const changes = [];
+        
+        if (analysisData.totalBalance !== null && analysisData.totalBalance !== undefined) {
+            const oldBalance = cardData.currentBalance || 0;
+            if (oldBalance !== analysisData.totalBalance) {
+                changes.push(`Saldo: $${oldBalance.toLocaleString()} → $${analysisData.totalBalance.toLocaleString()}`);
+            }
+        }
+        
+        if (analysisData.creditLimit !== null && analysisData.creditLimit !== undefined) {
+            const oldLimit = cardData.limit || 0;
+            if (oldLimit !== analysisData.creditLimit) {
+                changes.push(`Límite: $${oldLimit.toLocaleString()} → $${analysisData.creditLimit.toLocaleString()}`);
+            }
+        }
+        
+        if (analysisData.dueDate && cardData.dueDate !== analysisData.dueDate) {
+            changes.push(`Vencimiento: ${cardData.dueDate || 'No establecido'} → ${analysisData.dueDate}`);
+        }
+        
+        if (analysisData.bankName && cardData.bank !== analysisData.bankName) {
+            changes.push(`Banco: ${cardData.bank || 'No establecido'} → ${analysisData.bankName}`);
+        }
+        
+        if (analysisData.cardHolderName && cardData.name !== analysisData.cardHolderName) {
+            changes.push(`Titular: ${cardData.name || 'No establecido'} → ${analysisData.cardHolderName}`);
+        }
+        
+        return changes;
     };
 
     // Función para enriquecer el resultado del análisis con datos faltantes
@@ -1805,6 +2426,22 @@ Busca información en toda la página, no solo en el resumen`
                 // Recargar tarjetas para incluir la nueva
                 await loadCards();
                 
+                // Verificar si se debe actualizar la tarjeta recién creada
+                // (esto puede suceder si hay información más completa en el análisis)
+                const shouldUpdate = await shouldUpdateCardData(newCard, pendingAnalysis);
+                console.log('¿Debe actualizar tarjeta recién creada?', shouldUpdate);
+                
+                if (shouldUpdate) {
+                    console.log('🔄 Actualizando tarjeta recién creada con información adicional...');
+                    try {
+                        await updateCardWithStatementData(newCard.id, pendingAnalysis);
+                        console.log('✅ Tarjeta recién creada actualizada con información adicional');
+                    } catch (updateError) {
+                        console.warn('⚠️ No se pudo actualizar la tarjeta recién creada:', updateError);
+                        // Continuar sin fallar
+                    }
+                }
+                
                 // Continuar con el guardado del statement usando la nueva tarjeta directamente
                 await saveStatementData(pendingAnalysis, false, newCard.id);
                 
@@ -1847,6 +2484,48 @@ Busca información en toda la página, no solo en el resumen`
             
             // Esperar a que el estado se actualice antes de continuar
             await new Promise(resolve => setTimeout(resolve, 200));
+            
+            // Verificar si este estado de cuenta es más reciente que el actual de la tarjeta
+            const shouldUpdate = await shouldUpdateCardData(existingCard, pendingAnalysis);
+            console.log('¿Debe actualizar tarjeta existente?', shouldUpdate);
+            
+                            if (shouldUpdate) {
+                    console.log('🔄 Actualizando datos de tarjeta existente con información más reciente...');
+                    
+                    // Obtener resumen de cambios antes de actualizar
+                    const changesSummary = getCardUpdateSummary(existingCard, pendingAnalysis);
+                    
+                    // Actualizar la tarjeta con los nuevos datos
+                    await updateCardWithStatementData(existingCard.id, pendingAnalysis);
+                    
+                    // Recargar las tarjetas para obtener los datos actualizados
+                    await loadCards();
+                    
+                    // Mostrar notificación con detalles de los cambios
+                    if (changesSummary.length > 0) {
+                        showNotification(
+                            'success',
+                            '🔄 Tarjeta Actualizada',
+                            `Los datos de "${existingCard.name}" se han actualizado:\n${changesSummary.join('\n')}`,
+                            8000
+                        );
+                    } else {
+                        showNotification(
+                            'success',
+                            '🔄 Tarjeta Actualizada',
+                            `Los datos de "${existingCard.name}" se han actualizado con la información más reciente del estado de cuenta.`,
+                            6000
+                        );
+                    }
+                } else {
+                    console.log('⏭️ Estado de cuenta anterior - tarjeta no actualizada');
+                    showNotification(
+                        'info',
+                        'ℹ️ Sin Cambios',
+                        `El estado de cuenta es anterior al último registrado para "${existingCard.name}". Los datos de la tarjeta no se han modificado.`,
+                        5000
+                    );
+                }
             
             // Continuar con el guardado del statement usando la tarjeta existente directamente
             await saveStatementData(pendingAnalysis, false, existingCard.id);
