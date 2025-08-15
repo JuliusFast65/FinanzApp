@@ -65,8 +65,6 @@ function createPNGIcon(size, filename) {
   const tempSvgPath = path.join(__dirname, '..', 'public', `temp-${filename}.svg`);
   fs.writeFileSync(tempSvgPath, svgContent);
   
-  console.log(`✅ Creado: ${filename} (${size}x${size})`);
-  
   // Nota: En un entorno real, aquí convertirías el SVG a PNG
   // Por ahora, solo creamos el SVG como placeholder
   return tempSvgPath;

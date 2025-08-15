@@ -23,12 +23,13 @@ function updateServiceWorkerVersion() {
       const currentVersion = match[1];
       const newVersion = incrementVersion(currentVersion);
       
-      content = content.replace(versionRegex, `const SW_VERSION = '${newVersion}';`);
+      // Actualizar la versión en el archivo
+      const updatedContent = content.replace(versionRegex, `const SW_VERSION = '${newVersion}';`);
+      fs.writeFileSync(swPath, updatedContent);
       
-      fs.writeFileSync(swPath, content, 'utf8');
-      console.log(`✅ Service Worker version updated: ${currentVersion} → ${newVersion}`);
+      // console.log(`✅ Service Worker version updated: ${currentVersion} → ${newVersion}`);
     } else {
-      console.log('⚠️  Could not find SW_VERSION in service worker');
+      // console.log('⚠️  Could not find SW_VERSION in service worker');
     }
   } catch (error) {
     console.error('❌ Error updating Service Worker version:', error);

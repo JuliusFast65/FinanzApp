@@ -75,6 +75,7 @@ export const validateStatement = (statementData) => {
             // IMPORTANTE: Los totales calculados ya están normalizados como valores absolutos
             // pero para la fórmula de saldo necesitamos considerar los signos correctos:
             // - Si el saldo anterior es positivo (+378.64), significa deuda
+            // - Si el saldo anterior es negativo (-457.47), significa saldo a favor
             // - Si los cargos vienen negativos en el PDF, los convertimos a positivos para la fórmula
             // - Si los pagos vienen positivos en el PDF, los mantenemos positivos para la fórmula
             
@@ -87,57 +88,51 @@ export const validateStatement = (statementData) => {
 
             console.log('🧮 Validación 1 - Fórmula de saldo:', {
                 previousBalance: parsedPreviousBalance,
+                previousBalanceType: parsedPreviousBalance >= 0 ? 'deuda' : 'saldo a favor',
                 totalCharges: calculatedTotals.totalCharges,
                 totalPayments: calculatedTotals.totalPayments,
                 expectedBalance: expectedBalance,
                 actualBalance: parsedTotalBalance,
                 difference: balanceDifference,
                 formula: `${parsedPreviousBalance} + ${calculatedTotals.totalCharges} - ${calculatedTotals.totalPayments} = ${expectedBalance}`,
-                explanation: `Saldo anterior (${parsedPreviousBalance >= 0 ? 'deuda' : 'saldo a favor'}) + Cargos (gastos) - Pagos (abonos) = Saldo esperado`
+                explanation: `Saldo anterior (${parsedPreviousBalance >= 0 ? 'deuda' : 'saldo a favor'}) + Cargos (gastos) - Pagos (abonos) = Saldo esperado`,
+                paysInterestOnCreditBalance: calculatedTotals.paysInterestOnCreditBalance || false
             });
 
             // Caso especial: Si todo es 0, está perfecto (tarjeta sin actividad/pagada)
             if (parsedPreviousBalance === 0 && parsedTotalBalance === 0 && 
                 calculatedTotals.totalCharges === 0 && calculatedTotals.totalPayments === 0) {
-                console.log('✅ Validación 1 OK - Tarjeta sin actividad (0+0-0=0)');
+                console.log('✅ Caso especial: Tarjeta sin actividad o completamente pagada');
+                validation.calculations.balanceFormulaValid = true;
             } else {
-                // Tolerancia: hasta $10 o 1% del saldo absoluto
+                // Tolerancia para diferencias pequeñas (1% del saldo o $10 mínimo)
                 const tolerance = Math.max(10, Math.abs(parsedTotalBalance) * 0.01);
                 
                 if (balanceDifference <= tolerance) {
-                    console.log('✅ Validación 1 OK - Fórmula de saldo correcta');
-                } else {
-                    // Agregar información adicional para debugging
-                    const debugInfo = {
+                    console.log('✅ Fórmula de saldo válida (dentro de tolerancia)');
+                    validation.calculations.balanceFormulaValid = true;
+                    validation.calculations.balanceFormulaDetails = {
                         previousBalance: parsedPreviousBalance,
                         totalCharges: calculatedTotals.totalCharges,
                         totalPayments: calculatedTotals.totalPayments,
                         expectedBalance: expectedBalance,
                         actualBalance: parsedTotalBalance,
                         difference: balanceDifference,
-                        tolerance: tolerance,
-                        transactionCount: calculatedTotals.transactionCount
+                        tolerance: tolerance
                     };
-                    
-                    validation.warnings.push({
+                } else {
+                    console.log('❌ Fórmula de saldo no válida (fuera de tolerancia)');
+                    validation.calculations.balanceFormulaValid = false;
+                    validation.errors.push({
                         type: 'balance_formula_mismatch',
                         field: 'totalBalance',
-                        message: `Fórmula de saldo no cuadra: Saldo anterior $${parsedPreviousBalance.toLocaleString()} + Cargos $${calculatedTotals.totalCharges.toLocaleString()} - Pagos $${calculatedTotals.totalPayments.toLocaleString()} = $${expectedBalance.toLocaleString()}, pero el saldo reportado es $${parsedTotalBalance.toLocaleString()}`,
+                        message: `Fórmula de saldo no cuadra: Saldo anterior $${parsedPreviousBalance.toLocaleString()} (${parsedPreviousBalance >= 0 ? 'deuda' : 'saldo a favor'}) + Cargos $${calculatedTotals.totalCharges.toLocaleString()} - Pagos $${calculatedTotals.totalPayments.toLocaleString()} = $${expectedBalance.toLocaleString()}, pero el saldo reportado es $${parsedTotalBalance.toLocaleString()}`,
                         severity: 'high',
                         expected: expectedBalance,
                         actual: parsedTotalBalance,
                         difference: balanceDifference,
-                        tolerance: tolerance,
-                        debugInfo: debugInfo
+                        tolerance: tolerance
                     });
-                    
-                    console.log('❌ Validación 1 FALLA - Fórmula de saldo incorrecta');
-                    console.log('🔍 Información de debugging:', debugInfo);
-                    console.log('💡 Posibles causas:');
-                    console.log('   • Transacciones no capturadas correctamente por la IA');
-                    console.log('   • Clasificación incorrecta de cargos vs pagos');
-                    console.log('   • Montos con signos incorrectos en el PDF original');
-                    console.log('   • Comisiones o intereses no incluidos en los cargos');
                 }
             }
         } else {
@@ -326,17 +321,26 @@ const findPreviousBalanceInTransactions = (transactions) => {
             
             const amount = parseFloat(transaction.amount);
             if (!isNaN(amount) && amount !== 0) {
-                console.log(`✅ Saldo anterior encontrado: $${Math.abs(amount)} en "${transaction.description}"`);
-                return Math.abs(amount);
+                // IMPORTANTE: Preservar el signo original para saldos a favor
+                // Un saldo negativo (-457.47) significa saldo a favor del cliente
+                // Un saldo positivo (+378.64) significa deuda del cliente
+                console.log(`✅ Saldo anterior encontrado: $${amount} en "${transaction.description}" (${amount >= 0 ? 'deuda' : 'saldo a favor'})`);
+                return amount; // Retornar con signo original
             }
+        }
+        
+        // Buscar también en transacciones de interés a favor que puedan indicar saldo anterior
+        if (description.includes('interés') && description.includes('saldo a favor')) {
+            console.log(`🔍 Transacción de interés a favor encontrada, puede indicar saldo anterior: ${transaction.description}`);
+            // Esta transacción sugiere que hay un saldo a favor, pero no es el saldo anterior en sí
         }
         
         // Si la primera transacción es un tipo específico y tiene monto significativo
         if (i === 0 && transaction.type === 'saldo_anterior' && transaction.amount) {
             const amount = parseFloat(transaction.amount);
             if (!isNaN(amount)) {
-                console.log(`✅ Saldo anterior por tipo: $${Math.abs(amount)}`);
-                return Math.abs(amount);
+                console.log(`✅ Saldo anterior por tipo: $${amount} (${amount >= 0 ? 'deuda' : 'saldo a favor'})`);
+                return amount; // Retornar con signo original
             }
         }
     }
@@ -371,7 +375,8 @@ const calculateTotalsFromTransactions = (transactions) => {
         hasPayments: false,
         hasStatementDate: false,
         hasDueDate: false,
-        totalTransactions: transactions.length
+        totalTransactions: transactions.length,
+        paysInterestOnCreditBalance: false // Nuevo indicador para intereses sobre saldos a favor
     };
 
     console.log('💰 Calculando totales desde transacciones...');
@@ -400,14 +405,27 @@ const calculateTotalsFromTransactions = (transactions) => {
         // Detectar tipo de transacción de forma más inteligente
         let detectedType = transaction.type;
         
+        // PRIORIDAD 1: Detectar intereses a favor ANTES de la clasificación general
+        if (description.includes('interés') || description.includes('interes') || 
+            description.includes('interest')) {
+            if (description.includes('saldo a favor') || description.includes('balance a favor') ||
+                description.includes('credit balance') || description.includes('favor')) {
+                detectedType = 'interes_a_favor';
+                transaction.type = 'interes_a_favor';
+                console.log(`💰 Interés a favor detectado tempranamente: ${transaction.description}`);
+            }
+        }
+        
         // Re-clasificar basándose en la descripción si es necesario
-        if (description.includes('pago') || description.includes('abono') || 
+        if (detectedType !== 'interes_a_favor' && (
+            description.includes('pago') || description.includes('abono') || 
             description.includes('payment') || description.includes('transferencia') ||
-            (amount < 0 && (description.includes('pago') || description.includes('abono')))) {
+            (amount < 0 && (description.includes('pago') || description.includes('abono'))))) {
             detectedType = 'pago';
-        } else if (description.includes('compra') || description.includes('cargo') || 
-                   description.includes('purchase') || description.includes('débito') ||
-                   (amount > 0 && !description.includes('pago') && !description.includes('abono'))) {
+        } else if (detectedType !== 'interes_a_favor' && (
+            description.includes('compra') || description.includes('cargo') || 
+            description.includes('purchase') || description.includes('débito') ||
+            (amount > 0 && !description.includes('pago') && !description.includes('abono')))) {
             detectedType = 'cargo';
         }
         
@@ -431,8 +449,11 @@ const calculateTotalsFromTransactions = (transactions) => {
                 description.includes('fee') || description.includes('cargo por')) {
                 totals.totalFees += normalizedAmount;
             }
-            if (description.includes('interés') || description.includes('interes') || 
-                description.includes('interest') || description.includes('financiamiento')) {
+            
+            // Detectar intereses regulares (no a favor)
+            if (detectedType !== 'interes_a_favor' && (
+                description.includes('interés') || description.includes('interes') || 
+                description.includes('interest') || description.includes('financiamiento'))) {
                 totals.totalInterest += normalizedAmount;
             }
             
@@ -443,6 +464,15 @@ const calculateTotalsFromTransactions = (transactions) => {
             totals.totalPayments += normalizedAmount;
             
             console.log(`💳 Pago detectado #${index + 1} [${group}]: ${normalizedAmount} (original: ${amount}, signo: ${amount >= 0 ? '+' : '-'})`);
+            console.log(`💰 Total de pagos acumulado hasta ahora: ${totals.totalPayments}`);
+        } else if (detectedType === 'interes_a_favor') {
+            // Los intereses a favor son como pagos - reducen la deuda
+            totals.totalPayments += normalizedAmount;
+            
+            // Marcar que esta tarjeta paga intereses sobre saldos a favor
+            totals.paysInterestOnCreditBalance = true;
+            
+            console.log(`💰 Interés a favor detectado #${index + 1} [${group}]: ${normalizedAmount} (reduciendo deuda)`);
             console.log(`💰 Total de pagos acumulado hasta ahora: ${totals.totalPayments}`);
         } else {
             // Transacción no clasificada - intentar clasificar por monto
@@ -486,6 +516,13 @@ const calculateTotalsFromTransactions = (transactions) => {
     console.log(`  • Total Cargos (gastos): $${totals.totalCharges} (siempre positivo para la fórmula)`);
     console.log(`  • Total Pagos (abonos): $${totals.totalPayments} (siempre positivo para la fórmula)`);
     console.log(`  • Fórmula: Saldo Anterior + ${totals.totalCharges} - ${totals.totalPayments} = Saldo Esperado`);
+    
+    // Información adicional sobre características especiales de la tarjeta
+    if (totals.paysInterestOnCreditBalance) {
+        console.log(`💰 CARACTERÍSTICA ESPECIAL: Esta tarjeta paga intereses sobre saldos a favor`);
+        console.log(`   • Los saldos negativos (a favor) pueden generar intereses positivos`);
+        console.log(`   • Ejemplo: Saldo anterior -$100.00 puede generar +$0.01 de interés`);
+    }
     
     return totals;
 };

@@ -125,12 +125,16 @@
 
         let deferredPrompt = null;
 
-        // Capturar beforeinstallprompt
+        // Capturar el evento beforeinstallprompt
         window.addEventListener('beforeinstallprompt', (e) => {
-            console.log('beforeinstallprompt event fired');
+            // Prevenir que el navegador muestre el prompt automático
             e.preventDefault();
-            deferredPrompt = e;
-            updateInstallStatus('beforeinstallprompt capturado');
+            
+            // Guardar el evento para uso posterior
+            window.deferredPrompt = e;
+            
+            // Mostrar el botón de instalación
+            document.getElementById('installButton').style.display = 'block';
         });
 
         // Función para agregar resultados de test

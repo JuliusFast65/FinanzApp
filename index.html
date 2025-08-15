@@ -42,9 +42,13 @@
     <script>
         // Capturar el evento beforeinstallprompt globalmente
         window.addEventListener('beforeinstallprompt', (e) => {
-            console.log('🎯 beforeinstallprompt capturado globalmente');
+            // Prevenir que el navegador muestre el prompt automático
             e.preventDefault();
+            
+            // Guardar el evento para uso posterior
             window.deferredPrompt = e;
+            
+            // console.log('🎯 beforeinstallprompt capturado globalmente');
         });
     </script>
   </head>

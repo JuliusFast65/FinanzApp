@@ -10,6 +10,17 @@ const openai = new OpenAI({
     dangerouslyAllowBrowser: true
 });
 
+// Tipos de transacciones disponibles
+export const TRANSACTION_TYPES = {
+    cargo: 'Cargo',
+    pago: 'Pago',
+    interes: 'Interés',
+    comision: 'Comisión',
+    saldo_anterior: 'Saldo Anterior',
+    interes_a_favor: 'Interés a Favor', // Nuevo tipo para intereses sobre saldos a favor
+    ajuste: 'Ajuste'
+};
+
 // Categorías disponibles con íconos y colores
 export const TRANSACTION_CATEGORIES = {
     food: {
@@ -344,6 +355,7 @@ export const getCategoryStats = (transactions) => {
 
 export default {
     TRANSACTION_CATEGORIES,
+    TRANSACTION_TYPES, // Exportar los tipos de transacciones
     categorizeTransaction,
     categorizeTransactions,
     getCategoryStats,

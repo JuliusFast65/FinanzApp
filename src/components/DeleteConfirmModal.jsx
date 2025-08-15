@@ -7,7 +7,6 @@ const DeleteConfirmModal = ({ isOpen, onClose, onConfirm, entry, currentTheme })
     if (!isOpen || !entry) return null;
 
     const handleConfirm = () => {
-        console.log('DeleteConfirmModal handleConfirm called');
         onConfirm();
         onClose();
     };

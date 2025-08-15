@@ -12,55 +12,74 @@ const registerServiceWorker = async () => {
       const existingRegistration = await navigator.serviceWorker.getRegistration();
       
       if (existingRegistration) {
-        console.log('Service Worker ya registrado con scope:', existingRegistration.scope);
+        // console.log('Service Worker ya registrado con scope:', existingRegistration.scope);
         
-        // Verificar si hay una nueva versión
-        await existingRegistration.update();
-        return existingRegistration;
-      }
-
-      // Registrar nuevo Service Worker
-      const registration = await navigator.serviceWorker.register('/sw.js', {
-        scope: '/',
-        updateViaCache: 'none' // Siempre verificar actualizaciones
-      });
-      
-      console.log('Service Worker registrado con scope:', registration.scope);
-
-      // Detectar actualizaciones
-      registration.addEventListener('updatefound', () => {
-        console.log('[SW] Nueva versión detectada');
-        const newWorker = registration.installing;
-        
-        newWorker.addEventListener('statechange', () => {
-          if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-            console.log('[SW] Nueva versión instalada, lista para activar');
-            
-            // Notificar a la aplicación que hay una actualización disponible
-            window.dispatchEvent(new CustomEvent('swUpdateAvailable'));
-          }
+        // Verificar si hay una nueva versión disponible
+        existingRegistration.addEventListener('updatefound', () => {
+          const newWorker = existingRegistration.installing;
+          
+          newWorker.addEventListener('statechange', () => {
+            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+              // console.log('[SW] Nueva versión detectada');
+              
+              // Mostrar notificación de actualización
+              if (confirm('Hay una nueva versión disponible. ¿Quieres actualizar ahora?')) {
+                newWorker.postMessage({ type: 'SKIP_WAITING' });
+              }
+            } else if (newWorker.state === 'activated') {
+              // console.log('[SW] Nueva versión instalada, lista para activar');
+              
+              // Recargar la página para activar la nueva versión
+              window.location.reload();
+            }
+          });
         });
-      });
-
-      // Manejar cuando el Service Worker toma control
-      navigator.serviceWorker.addEventListener('controllerchange', () => {
-        console.log('[SW] Nuevo Service Worker tomó control');
         
-        // Recargar la página para aplicar la nueva versión
-        window.location.reload();
-      });
-
-      // Manejar errores del Service Worker
-      navigator.serviceWorker.addEventListener('error', (error) => {
-        console.error('[SW] Error en Service Worker:', error);
-      });
-
-      return registration;
+        // Escuchar cambios de estado del Service Worker
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+          // console.log('[SW] Nuevo Service Worker tomó control');
+        });
+      } else {
+        // Registrar nuevo Service Worker
+        try {
+          const registration = await navigator.serviceWorker.register('/sw.js', {
+            scope: '/'
+          });
+          
+          // console.log('Service Worker registrado con scope:', registration.scope);
+          
+          // Escuchar actualizaciones
+          registration.addEventListener('updatefound', () => {
+            const newWorker = registration.installing;
+            
+            newWorker.addEventListener('statechange', () => {
+              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                // console.log('[SW] Nueva versión detectada');
+                
+                if (confirm('Hay una nueva versión disponible. ¿Quieres actualizar ahora?')) {
+                  newWorker.postMessage({ type: 'SKIP_WAITING' });
+                }
+              } else if (newWorker.state === 'activated') {
+                // console.log('[SW] Nueva versión instalada, lista para activar');
+                window.location.reload();
+              }
+            });
+          });
+          
+          // Escuchar cambios de estado
+          navigator.serviceWorker.addEventListener('controllerchange', () => {
+            // console.log('[SW] Nuevo Service Worker tomó control');
+          });
+          
+        } catch (error) {
+          console.error('Error registrando el Service Worker:', error);
+        }
+      }
     } catch (error) {
       console.error('Error registrando el Service Worker:', error);
     }
   } else {
-    console.log('Service Worker no soportado en este navegador');
+    // console.log('Service Worker no soportado en este navegador');
   }
 };
 

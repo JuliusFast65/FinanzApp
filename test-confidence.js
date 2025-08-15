@@ -48,97 +48,112 @@ const getConfidenceScore = (validation) => {
     return Math.max(0, score);
 };
 
-// Escenario 1: Datos completos (confianza alta)
-console.log('=== ESCENARIO 1: DATOS COMPLETOS ===');
+// Escenario 1: Datos completos
 const validation1 = {
-    errors: [],
-    warnings: [],
-    calculations: {
-        hasPreviousBalance: true,
-        hasCurrentBalance: true,
-        hasMinimumPayment: true,
-        hasPayments: true,
-        hasStatementDate: true,
-        hasDueDate: true,
-        totalTransactions: 15
-    }
+    hasValidTotalBalance: true,
+    hasValidPreviousBalance: true,
+    hasValidMinimumPayment: true,
+    hasValidDueDate: true,
+    hasValidStatementDate: true,
+    hasValidTransactions: true,
+    transactionsHaveValidDates: true,
+    transactionsHaveValidAmounts: true,
+    transactionsHaveValidDescriptions: true,
+    transactionsHaveValidTypes: true,
+    transactionsHaveValidGroups: true,
+    balanceCalculationMatches: true,
+    noDuplicateTransactions: true,
+    transactionsAreChronological: true
 };
-console.log('Confianza:', getConfidenceScore(validation1) + '%');
 
-// Escenario 2: Datos mínimos (confianza media)
-console.log('\n=== ESCENARIO 2: DATOS MÍNIMOS ===');
+// console.log('=== ESCENARIO 1: DATOS COMPLETOS ===');
+// console.log('Validación:', validation1);
+// console.log('Confianza:', getConfidenceScore(validation1) + '%');
+
+// Escenario 2: Datos mínimos
 const validation2 = {
-    errors: [],
-    warnings: [],
-    calculations: {
-        hasPreviousBalance: false,
-        hasCurrentBalance: true,
-        hasMinimumPayment: false,
-        hasPayments: false,
-        hasStatementDate: true,
-        hasDueDate: false,
-        totalTransactions: 0
-    }
+    hasValidTotalBalance: true,
+    hasValidPreviousBalance: false,
+    hasValidMinimumPayment: false,
+    hasValidDueDate: false,
+    hasValidStatementDate: false,
+    hasValidTransactions: true,
+    transactionsHaveValidDates: true,
+    transactionsHaveValidAmounts: true,
+    transactionsHaveValidDescriptions: true,
+    transactionsHaveValidTypes: false,
+    transactionsHaveValidGroups: false,
+    balanceCalculationMatches: false,
+    noDuplicateTransactions: true,
+    transactionsAreChronological: true
 };
-console.log('Confianza:', getConfidenceScore(validation2) + '%');
 
-// Escenario 3: Casi sin datos (confianza baja)
-console.log('\n=== ESCENARIO 3: CASI SIN DATOS ===');
+// console.log('\n=== ESCENARIO 2: DATOS MÍNIMOS ===');
+// console.log('Validación:', validation2);
+// console.log('Confianza:', getConfidenceScore(validation2) + '%');
+
+// Escenario 3: Casi sin datos
 const validation3 = {
-    errors: [],
-    warnings: [
-        { severity: 'low', message: 'No se pueden validar saldos' },
-        { severity: 'low', message: 'No se puede validar pago mínimo' },
-        { severity: 'low', message: 'No se puede validar fechas' }
-    ],
-    calculations: {
-        hasPreviousBalance: false,
-        hasCurrentBalance: false,
-        hasMinimumPayment: false,
-        hasPayments: false,
-        hasStatementDate: false,
-        hasDueDate: false,
-        totalTransactions: 0
-    }
+    hasValidTotalBalance: false,
+    hasValidPreviousBalance: false,
+    hasValidMinimumPayment: false,
+    hasValidDueDate: false,
+    hasValidStatementDate: false,
+    hasValidTransactions: true,
+    transactionsHaveValidDates: false,
+    transactionsHaveValidAmounts: false,
+    transactionsHaveValidDescriptions: false,
+    transactionsHaveValidTypes: false,
+    transactionsHaveValidGroups: false,
+    balanceCalculationMatches: false,
+    noDuplicateTransactions: false,
+    transactionsAreChronological: false
 };
-console.log('Confianza:', getConfidenceScore(validation3) + '%');
 
-// Escenario 4: Con errores y sin datos (confianza muy baja)
-console.log('\n=== ESCENARIO 4: CON ERRORES Y SIN DATOS ===');
+// console.log('\n=== ESCENARIO 3: CASI SIN DATOS ===');
+// console.log('Validación:', validation3);
+// console.log('Confianza:', getConfidenceScore(validation3) + '%');
+
+// Escenario 4: Con errores y sin datos
 const validation4 = {
-    errors: [
-        { message: 'Error de validación' }
-    ],
-    warnings: [
-        { severity: 'high', message: 'Problema crítico' }
-    ],
-    calculations: {
-        hasPreviousBalance: false,
-        hasCurrentBalance: false,
-        hasMinimumPayment: false,
-        hasPayments: false,
-        hasStatementDate: false,
-        hasDueDate: false,
-        totalTransactions: 0
-    }
+    hasValidTotalBalance: false,
+    hasValidPreviousBalance: false,
+    hasValidMinimumPayment: false,
+    hasValidDueDate: false,
+    hasValidStatementDate: false,
+    hasValidTransactions: false,
+    transactionsHaveValidDates: false,
+    transactionsHaveValidAmounts: false,
+    transactionsHaveValidDescriptions: false,
+    transactionsHaveValidTypes: false,
+    transactionsHaveValidGroups: false,
+    balanceCalculationMatches: false,
+    noDuplicateTransactions: false,
+    transactionsAreChronological: false
 };
-console.log('Confianza:', getConfidenceScore(validation4) + '%');
 
-// Escenario 5: Solo transacciones (confianza media-baja)
-console.log('\n=== ESCENARIO 5: SOLO TRANSACCIONES ===');
+// console.log('\n=== ESCENARIO 4: CON ERRORES Y SIN DATOS ===');
+// console.log('Validación:', validation4);
+// console.log('Confianza:', getConfidenceScore(validation4) + '%');
+
+// Escenario 5: Solo transacciones
 const validation5 = {
-    errors: [],
-    warnings: [
-        { severity: 'low', message: 'No se pueden validar saldos' }
-    ],
-    calculations: {
-        hasPreviousBalance: false,
-        hasCurrentBalance: false,
-        hasMinimumPayment: false,
-        hasPayments: false,
-        hasStatementDate: false,
-        hasDueDate: false,
-        totalTransactions: 8
-    }
+    hasValidTotalBalance: false,
+    hasValidPreviousBalance: false,
+    hasValidMinimumPayment: false,
+    hasValidDueDate: false,
+    hasValidStatementDate: false,
+    hasValidTransactions: true,
+    transactionsHaveValidDates: true,
+    transactionsHaveValidAmounts: true,
+    transactionsHaveValidDescriptions: true,
+    transactionsHaveValidTypes: true,
+    transactionsHaveValidGroups: true,
+    balanceCalculationMatches: false,
+    noDuplicateTransactions: true,
+    transactionsAreChronological: true
 };
-console.log('Confianza:', getConfidenceScore(validation5) + '%');
+
+// console.log('\n=== ESCENARIO 5: SOLO TRANSACCIONES ===');
+// console.log('Validación:', validation5);
+// console.log('Confianza:', getConfidenceScore(validation5) + '%');

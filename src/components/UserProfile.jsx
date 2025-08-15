@@ -43,11 +43,9 @@ const UserProfile = ({ db, user, appId }) => {
                     ...prevSettings,
                     ...data
                 }));
-                console.log('Configuraciones del perfile del usuario cargadas:', data);
             } else {
                 // Primera vez - crear configuración por defecto
                 await setDoc(userDoc, userSettings);
-                console.log('Configuración por defecto creada');
             }
         } catch (error) {
             console.error('Error cargando perfil de usuario:', error);

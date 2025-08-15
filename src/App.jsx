@@ -69,7 +69,7 @@ const FinanceApp = ({ user }) => {
 
     const handleStatementAnalyzed = (result) => {
         // Recargar datos del dashboard cuando se analiza un nuevo estado de cuenta
-        console.log('Nuevo estado de cuenta analizado:', result);
+        // console.log('Nuevo estado de cuenta analizado:', result);
         // NO cambiar automáticamente al dashboard - permitir que el usuario revise y corrija categorías
         // setCurrentView('dashboard'); // Comentado para permitir correcciones inmediatas
         // El dashboard se actualizará automáticamente cuando el usuario navegue manualmente

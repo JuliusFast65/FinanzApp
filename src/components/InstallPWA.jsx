@@ -26,24 +26,13 @@ const InstallPWA = () => {
         setIsEdge(isEdgeMobile); // Solo Edge móvil
         setIsStandalone(isStandaloneMode);
 
-        console.log('🔧 InstallPWA Debug:', {
-            isIOS: isIOSDevice,
-            isEdge: isEdgeBrowser,
-            isEdgeMobile: isEdgeMobile,
-            isAndroid: isAndroidDevice,
-            isStandalone: isStandaloneMode,
-            userAgent: userAgent.substring(0, 100) + '...'
-        });
-
         // Si ya está instalada, no mostrar nada
         if (isStandaloneMode) {
-            console.log('🚫 PWA ya instalada, no mostrar modal');
             return;
         }
 
         // Verificar si ya hay un prompt disponible globalmente
         if (window.deferredPrompt) {
-            console.log('🎯 beforeinstallprompt ya disponible globalmente');
             setDeferredPrompt(window.deferredPrompt);
             setIsPWAInstallable(true);
             // Mostrar modal después de un delay
@@ -111,8 +100,6 @@ const InstallPWA = () => {
                                 
                                 if (hasValidManifest) {
                                     setIsPWAInstallable(true);
-                                    console.log('✅ PWA es instalable');
-                                    
                                     // Si no hay deferredPrompt después de 5 segundos, mostrar instrucciones manuales
                                     setTimeout(() => {
                                         if (!deferredPrompt && !hasUserDismissed) {

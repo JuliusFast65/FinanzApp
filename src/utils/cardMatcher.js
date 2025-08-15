@@ -11,17 +11,17 @@
  * @returns {Object} Resultado del análisis de duplicados
  */
 export const findPotentialDuplicates = (existingCards, analysisData) => {
-    console.log('🔍 findPotentialDuplicates iniciado');
-    console.log('📋 Tarjetas recibidas:', existingCards?.length || 0);
-    console.log('📄 Datos de análisis recibidos:', {
-        bankName: analysisData?.bankName,
-        lastFourDigits: analysisData?.lastFourDigits,
-        cardHolderName: analysisData?.cardHolderName,
-        creditLimit: analysisData?.creditLimit
-    });
+    // console.log('🔍 findPotentialDuplicates iniciado');
+    // console.log('📋 Tarjetas recibidas:', existingCards?.length || 0);
+    // console.log('📄 Datos de análisis recibidos:', {
+    //     bankName: analysisData?.bankName,
+    //     lastFourDigits: analysisData?.lastFourDigits,
+    //     cardHolderName: analysisData?.cardHolderName,
+    //     creditLimit: analysisData?.creditLimit
+    // });
     
     if (!existingCards || !Array.isArray(existingCards) || existingCards.length === 0) {
-        console.log('⚠️ No hay tarjetas existentes para comparar');
+        // console.log('⚠️ No hay tarjetas existentes para comparar');
         return {
             hasDuplicates: false,
             exactMatches: [],
@@ -47,13 +47,15 @@ export const findPotentialDuplicates = (existingCards, analysisData) => {
         const normalizedCard = normalizeCardData(card);
         const matchScore = calculateMatchScore(normalizedCard, normalizedAnalysis);
 
-        console.log(`🔍 Comparando con tarjeta "${card.name}":`, {
-            cardBank: normalizedCard.bank,
-            cardLastFour: normalizedCard.lastFour,
-            analysisBank: normalizedAnalysis.bank,
-            analysisLastFour: normalizedAnalysis.lastFour,
-            matchScore
-        });
+        // console.log(`🔍 Comparando con tarjeta "${card.name}":`, {
+        //     cardBank: normalizedCard.bank,
+        //     cardLastFour: normalizedCard.lastFour,
+        //     cardHolder: normalizedCard.holderName,
+        //     analysisBank: normalizedAnalysis.bank,
+        //     analysisLastFour: normalizedAnalysis.lastFour,
+        //     analysisHolder: normalizedAnalysis.holderName,
+        //     matchScore
+        // });
 
         if (matchScore.total >= 90) {
             result.exactMatches.push({
@@ -76,17 +78,26 @@ export const findPotentialDuplicates = (existingCards, analysisData) => {
         }
     }
 
-    // Determinar si hay duplicados y si es seguro crear
+    // 🔒 NUEVA LÓGICA MÁS ESTRICTA: Considerar como duplicado si hay coincidencias fuertes
     result.hasDuplicates = result.exactMatches.length > 0 || result.strongMatches.length > 0;
+    
+    // 🔒 Solo es seguro crear si NO hay coincidencias fuertes o exactas
+    // Esto previene la creación automática de tarjetas similares
     result.canCreateSafely = result.exactMatches.length === 0 && result.strongMatches.length === 0;
+    
+    // 🔒 VALIDACIÓN ADICIONAL: Si hay coincidencias posibles, también considerar como no seguro
+    if (result.possibleMatches.length > 0) {
+        // console.log('⚠️ Coincidencias posibles detectadas, marcando como no seguro para crear automáticamente');
+        result.canCreateSafely = false;
+    }
 
-    console.log('📊 Resultado análisis duplicados:', {
-        hasDuplicates: result.hasDuplicates,
-        canCreateSafely: result.canCreateSafely,
-        exactMatches: result.exactMatches.length,
-        strongMatches: result.strongMatches.length,
-        possibleMatches: result.possibleMatches.length
-    });
+    // console.log('📊 Resultado análisis duplicados:', {
+    //     hasDuplicates: result.hasDuplicates,
+    //     canCreateSafely: result.canCreateSafely,
+    //     exactMatches: result.exactMatches.length,
+    //     strongMatches: result.strongMatches.length,
+    //     possibleMatches: result.possibleMatches.length
+    // });
 
     return result;
 };
@@ -94,9 +105,9 @@ export const findPotentialDuplicates = (existingCards, analysisData) => {
 /**
  * Normaliza datos de tarjeta para comparación
  */
-const normalizeCardData = (data) => {
+export const normalizeCardData = (data) => {
     if (!data) {
-        console.log('⚠️ normalizeCardData: datos vacíos');
+        // console.log('⚠️ normalizeCardData: datos vacíos');
         return {};
     }
 
@@ -123,31 +134,48 @@ const normalizeCardData = (data) => {
         }
     }
 
+    // 🔧 NUEVA LÓGICA: Intentar extraer el titular del nombre de la tarjeta si no está en campos específicos
+    let holderName = data.cardHolderName || data.holderName || data.holder || '';
+    
+    // Si no hay titular en campos específicos, intentar extraer del nombre de la tarjeta
+    if (!holderName && data.name) {
+        // El nombre de la tarjeta podría ser el titular (ej: "JULIO CESAR VELOZ MORAN")
+        // Solo usar si no parece ser un nombre de banco
+        const nameWords = data.name.split(' ').filter(word => word.length > 0);
+        if (nameWords.length >= 2 && !data.name.toLowerCase().includes('banco') && !data.name.toLowerCase().includes('visa') && !data.name.toLowerCase().includes('mastercard')) {
+            holderName = data.name;
+        }
+    }
+
     const normalized = {
         bank: normalizeString(bankName),
         lastFour: extractLastFour(lastFourDigits),
-        holderName: normalizeString(data.cardHolderName || data.holderName || data.holder || ''),
+        holderName: normalizeString(holderName),
         limit: parseFloat(data.creditLimit || data.limit || data.creditLimit || 0), // Solo para referencia, no usado en comparación
         type: normalizeString(data.type || data.cardType || 'credit')
     };
 
-    console.log('🔧 Datos normalizados:', {
-        original: {
-            name: data.name,
-            bankName: data.bankName,
-            bank: data.bank,
-            issuer: data.issuer,
-            lastFourDigits: data.lastFourDigits,
-            cardNumber: data.cardNumber,
-            number: data.number,
-            cardHolderName: data.cardHolderName,
-            holderName: data.holderName,
-            holder: data.holder,
-            creditLimit: data.creditLimit,
-            limit: data.limit
-        },
-        normalized
-    });
+    // console.log('🔧 Datos normalizados:', {
+    //     original: {
+    //         name: data.name,
+    //         bankName: data.bankName,
+    //         bank: data.bank,
+    //         issuer: data.issuer,
+    //         lastFourDigits: data.lastFourDigits,
+    //         cardNumber: data.cardNumber,
+    //         number: data.number,
+    //         cardHolderName: data.cardHolderName,
+    //         holderName: data.holderName,
+    //         holder: data.holder,
+    //         creditLimit: data.creditLimit,
+    //         limit: data.limit
+    //     },
+    //     normalized,
+    //     holderNameSource: holderName === data.name ? 'name' : 
+    //                       holderName === data.cardHolderName ? 'cardHolderName' :
+    //                       holderName === data.holderName ? 'holderName' :
+    //                       holderName === data.holder ? 'holder' : 'none'
+    // });
 
     return normalized;
 };
@@ -155,7 +183,7 @@ const normalizeCardData = (data) => {
 /**
  * Normaliza strings para comparación
  */
-const normalizeString = (str) => {
+export const normalizeString = (str) => {
     if (!str) return '';
     return str
         .toLowerCase()
@@ -167,7 +195,7 @@ const normalizeString = (str) => {
 /**
  * Extrae los últimos 4 dígitos de cualquier formato
  */
-const extractLastFour = (input) => {
+export const extractLastFour = (input) => {
     if (!input) return '';
     
     // Extraer solo números
@@ -187,37 +215,49 @@ const calculateMatchScore = (card1, card2) => {
         details: {}
     };
 
-    // 1. Comparación de últimos 4 dígitos (peso: 40 puntos)
+    // 1. Comparación de últimos 4 dígitos (peso: 30 puntos)
     if (card1.lastFour && card2.lastFour && card1.lastFour === card2.lastFour) {
-        score.details.lastFourMatch = 40;
+        score.details.lastFourMatch = 30;
         score.reasons.push(`Últimos 4 dígitos coinciden: ${card1.lastFour}`);
     } else if (card1.lastFour && card2.lastFour) {
         score.details.lastFourMatch = 0;
         score.reasons.push(`Últimos 4 dígitos diferentes: ${card1.lastFour} vs ${card2.lastFour}`);
     }
 
-    // 2. Comparación de banco (peso: 30 puntos)
-    const bankSimilarity = calculateStringSimilarity(card1.bank, card2.bank);
-    if (bankSimilarity >= 0.9) {
-        score.details.bankMatch = 30;
-        score.reasons.push(`Banco muy similar: "${card1.bank}" ≈ "${card2.bank}"`);
-    } else if (bankSimilarity >= 0.7) {
-        score.details.bankMatch = 20;
-        score.reasons.push(`Banco parcialmente similar: "${card1.bank}" ≈ "${card2.bank}"`);
+    // 2. Comparación de banco (peso: 35 puntos) - AUMENTADO para dar más peso al banco
+    if (card1.bank === card2.bank && card1.bank && card2.bank) {
+        // 🔧 NUEVA LÓGICA: Banco idéntico (después de normalización)
+        score.details.bankMatch = 35;
+        score.reasons.push(`Banco idéntico: "${card1.bank}"`);
     } else {
-        score.details.bankMatch = 0;
-        score.reasons.push(`Banco diferente: "${card1.bank}" vs "${card2.bank}"`);
+        const bankSimilarity = calculateStringSimilarity(card1.bank, card2.bank);
+        if (bankSimilarity >= 0.9) {
+            score.details.bankMatch = 35;
+            score.reasons.push(`Banco muy similar: "${card1.bank}" ≈ "${card2.bank}"`);
+        } else if (bankSimilarity >= 0.7) {
+            score.details.bankMatch = 25;
+            score.reasons.push(`Banco parcialmente similar: "${card1.bank}" ≈ "${card2.bank}"`);
+        } else {
+            score.details.bankMatch = 0;
+            score.reasons.push(`Banco diferente: "${card1.bank}" vs "${card2.bank}"`);
+        }
     }
 
-    // 3. Comparación de titular (peso: 20 puntos)
+    // 3. Comparación de titular (peso: 35 puntos) - AUMENTADO para detectar mejor duplicados
     if (card1.holderName && card2.holderName) {
-        const nameSimilarity = calculateStringSimilarity(card1.holderName, card2.holderName);
-        if (nameSimilarity >= 0.8) {
-            score.details.nameMatch = 20;
-            score.reasons.push(`Titular similar: "${card1.holderName}" ≈ "${card2.holderName}"`);
-        } else if (nameSimilarity >= 0.5) {
-            score.details.nameMatch = 10;
-            score.reasons.push(`Titular parcialmente similar`);
+        if (card1.holderName === card2.holderName) {
+            // 🔧 NUEVA LÓGICA: Titular idéntico (después de normalización)
+            score.details.nameMatch = 35;
+            score.reasons.push(`Titular idéntico: "${card1.holderName}"`);
+        } else {
+            const nameSimilarity = calculateStringSimilarity(card1.holderName, card2.holderName);
+            if (nameSimilarity >= 0.8) {
+                score.details.nameMatch = 35;
+                score.reasons.push(`Titular similar: "${card1.holderName}" ≈ "${card2.holderName}"`);
+            } else if (nameSimilarity >= 0.5) {
+                score.details.nameMatch = 20;
+                score.reasons.push(`Titular parcialmente similar`);
+            }
         }
     }
 
@@ -228,6 +268,29 @@ const calculateMatchScore = (card1, card2) => {
 
     // Calcular total
     score.total = Object.values(score.details).reduce((sum, value) => sum + (value || 0), 0);
+
+    // 🔒 NUEVA REGLA: Si el banco y titular son idénticos, considerar como duplicado fuerte
+    // incluso si los últimos 4 dígitos son diferentes
+    if (card1.bank === card2.bank && 
+        card1.holderName === card2.holderName && 
+        card1.bank && card2.bank && 
+        card1.holderName && card2.holderName) {
+        
+        if (card1.lastFour !== card2.lastFour) {
+            score.total = Math.max(score.total, 75); // Mínimo 75 puntos para banco + titular idénticos
+            score.reasons.push(`⚠️ ALERTA: Mismo banco y titular, pero diferentes últimos 4 dígitos - posible duplicado`);
+            score.details.duplicateAlert = 75;
+        }
+    }
+
+    // 🔍 LOG ADICIONAL para debugging
+    // console.log('📊 Puntuación calculada:', {
+    //     card1: { bank: card1.bank, holderName: card1.holderName, lastFour: card1.lastFour },
+    //     card2: { bank: card2.bank, holderName: card2.holderName, lastFour: card2.lastFour },
+    //     scoreDetails: score.details,
+    //     totalScore: score.total,
+    //     reasons: score.reasons
+    // });
 
     return score;
 };
@@ -337,7 +400,7 @@ export const generateCardSuggestions = (duplicateAnalysis) => {
 /**
  * Valida si es seguro crear una tarjeta automáticamente sin confirmación
  */
-export const isSafeToAutoCreate = (duplicateAnalysis, analysisData) => {
+export const isSafeToAutoCreate = (duplicateAnalysis, analysisData, existingCards = []) => {
     // 🔒 VALIDACIÓN ROBUSTA: Verificar que los parámetros existen y son válidos
     if (!duplicateAnalysis || typeof duplicateAnalysis !== 'object') {
         console.warn('⚠️ isSafeToAutoCreate: duplicateAnalysis es inválido:', duplicateAnalysis);
@@ -380,27 +443,91 @@ export const isSafeToAutoCreate = (duplicateAnalysis, analysisData) => {
                                    strongMatches && Array.isArray(strongMatches) && strongMatches.length > 0;
     const noWeakMatches = !possibleMatches || !Array.isArray(possibleMatches) || possibleMatches.length === 0; // Solo posibles coincidencias débiles
     
-    // Es seguro crear si no hay coincidencias, O si hay coincidencias fuertes (para vincular automáticamente)
-    const isSafe = (canCreateSafely && hasCompleteData && hasValidData) || 
-                   (hasStrongOrExactMatches && hasCompleteData && hasValidData && noWeakMatches);
+    // 🔒 NUEVA VALIDACIÓN: Verificar si hay tarjetas con el mismo banco y titular
+    // Esto es crítico para evitar duplicados como el caso de "Banco Bolivariano" + "JULIO CESAR VELOZ MORAN"
+    const hasSameBankAndHolder = exactMatches && Array.isArray(exactMatches) && exactMatches.length > 0 && 
+        exactMatches.some(match => {
+            const normalizedCard = normalizeCardData(match.card);
+            const normalizedAnalysis = normalizeCardData(analysisData);
+            
+            return normalizedCard.bank === normalizedAnalysis.bank && 
+                   normalizedCard.holderName === normalizedAnalysis.holderName &&
+                   normalizedCard.bank && normalizedAnalysis.bank &&
+                   normalizedCard.holderName && normalizedAnalysis.holderName;
+        });
     
-    console.log('🔒 Evaluando si es seguro auto-crear:', {
-        canCreateSafely,
-        hasCompleteData,
-        hasValidData,
-        hasStrongOrExactMatches,
-        noWeakMatches,
-        exactMatches: exactMatches?.length || 0,
-        strongMatches: strongMatches?.length || 0,
-        possibleMatches: possibleMatches?.length || 0,
-        dataQuality: {
-            bankName: analysisData.bankName,
-            lastFourDigits: analysisData.lastFourDigits,
-            cardHolderName: analysisData.cardHolderName,
-            totalBalance: analysisData.totalBalance
-        },
-        finalDecision: isSafe
+    // 🔒 VALIDACIÓN ADICIONAL: Verificar si hay tarjetas con el mismo banco y nombre (sin importar últimos 4 dígitos)
+    // Esto previene crear tarjetas adicionales del mismo banco automáticamente
+    const hasSameBankAndName = existingCards && Array.isArray(existingCards) && existingCards.some(card => {
+        const normalizedCard = normalizeCardData(card);
+        const normalizedAnalysis = normalizeCardData(analysisData);
+        
+        return normalizedCard.bank === normalizedAnalysis.bank && 
+               normalizedCard.name === normalizedAnalysis.cardHolderName &&
+               normalizedCard.bank && normalizedAnalysis.bank &&
+               normalizedCard.name && normalizedAnalysis.cardHolderName;
     });
+    
+    // Si hay tarjetas con el mismo banco y titular, NO es seguro crear automáticamente
+    if (hasSameBankAndHolder) {
+        // console.log('🚨 ALERTA: Se detectaron tarjetas con el mismo banco y titular - NO es seguro crear automáticamente');
+        return false;
+    }
+    
+    // Si hay tarjetas con el mismo banco y nombre, NO es seguro crear automáticamente
+    if (hasSameBankAndName) {
+        // console.log('🚨 ALERTA: Se detectaron tarjetas con el mismo banco y nombre - NO es seguro crear automáticamente');
+        return false;
+    }
+    
+    // 🔒 NUEVA LÓGICA MÁS ESTRICTA: Solo crear si NO hay coincidencias
+    // NO crear automáticamente si hay coincidencias fuertes o exactas
+    
+    // 🔒 VALIDACIÓN ADICIONAL: Verificar si hay tarjetas del mismo banco
+    const hasSameBank = existingCards && Array.isArray(existingCards) && existingCards.some(card => {
+        const normalizedCard = normalizeCardData(card);
+        const normalizedAnalysis = normalizeCardData(analysisData);
+        
+        return normalizedCard.bank === normalizedAnalysis.bank && 
+               normalizedCard.bank && normalizedAnalysis.bank;
+    });
+    
+    // Si hay tarjetas del mismo banco, NO es seguro crear automáticamente
+    if (hasSameBank) {
+        // console.log('🚨 ALERTA: Se detectaron tarjetas del mismo banco - NO es seguro crear automáticamente');
+        return false;
+    }
+    
+    const isSafe = canCreateSafely && hasCompleteData && hasValidData && !hasStrongOrExactMatches;
+    
+    // console.log('🔒 Evaluando si es seguro auto-crear:', {
+    //     canCreateSafely,
+    //     hasCompleteData,
+    //     hasValidData,
+    //     hasStrongOrExactMatches,
+    //     noWeakMatches,
+    //     hasSameBankAndHolder,
+    //     hasSameBankAndName,
+    //     hasSameBank,
+    //     exactMatches: exactMatches?.length || 0,
+    //     strongMatches: exactMatches?.length || 0,
+    //     possibleMatches: possibleMatches?.length || 0,
+    //     dataQuality: {
+    //         bankName: analysisData.bankName,
+    //         lastFourDigits: analysisData.lastFourDigits,
+    //         cardHolderName: analysisData.cardHolderName,
+    //         totalBalance: analysisData.totalBalance
+    //     },
+    //     finalDecision: isSafe,
+    //     reason: isSafe ? 'No hay coincidencias y datos completos' : 
+    //             hasSameBank ? 'Hay tarjetas del mismo banco' :
+    //             hasSameBankAndName ? 'Hay tarjetas con mismo banco y nombre' :
+    //             hasSameBankAndHolder ? 'Hay tarjetas con mismo banco y titular' :
+    //             hasStrongOrExactMatches ? 'Hay coincidencias fuertes/exactas' :
+    //             !canCreateSafely ? 'No es seguro crear según análisis' :
+    //             !hasCompleteData ? 'Datos incompletos' :
+    //             !hasValidData ? 'Datos inválidos' : 'Otra razón'
+    // });
 
     return isSafe;
 };
@@ -433,18 +560,38 @@ export const hasSufficientDataForCardCreation = (analysisData) => {
         analysisData.lastFourDigits.length === 4 &&
         /^\d{4}$/.test(analysisData.lastFourDigits);
 
-    const isSufficient = hasMinimumData && hasValidData;
+    // 🔒 NUEVA VALIDACIÓN: Verificar que el nombre del titular sea válido
+    const hasValidHolderName = 
+        analysisData.cardHolderName && 
+        typeof analysisData.cardHolderName === 'string' &&
+        analysisData.cardHolderName.trim() !== '' &&
+        analysisData.cardHolderName !== 'Titular Principal' &&
+        analysisData.cardHolderName.length > 3; // Al menos 3 caracteres
+
+    // 🔒 NUEVA VALIDACIÓN: Verificar que el banco tenga un nombre válido
+    const hasValidBankName = 
+        analysisData.bankName && 
+        typeof analysisData.bankName === 'string' &&
+        analysisData.bankName.trim() !== '' &&
+        analysisData.bankName !== 'Banco Desconocido' &&
+        analysisData.bankName.length > 2; // Al menos 2 caracteres
+
+    const isSufficient = hasMinimumData && hasValidData && hasValidHolderName && hasValidBankName;
     
     console.log('🔍 Evaluando si hay datos suficientes para mostrar opciones de tarjeta:', {
         hasMinimumData,
         hasValidData,
+        hasValidHolderName,
+        hasValidBankName,
         dataQuality: {
             bankName: analysisData.bankName,
             lastFourDigits: analysisData.lastFourDigits,
             cardHolderName: analysisData.cardHolderName,
             bankNameType: typeof analysisData.bankName,
             lastFourDigitsType: typeof analysisData.lastFourDigits,
-            lastFourDigitsLength: analysisData.lastFourDigits?.length
+            lastFourDigitsLength: analysisData.lastFourDigits?.length,
+            holderNameLength: analysisData.cardHolderName?.length,
+            bankNameLength: analysisData.bankName?.length
         },
         finalDecision: isSufficient
     });

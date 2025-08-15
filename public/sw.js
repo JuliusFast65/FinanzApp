@@ -57,44 +57,40 @@ const cacheFirstStrategy = async (request) => {
 };
 
 // Instalación del Service Worker
-self.addEventListener('install', event => {
-  console.log(`[SW] Instalando versión ${SW_VERSION}`);
-  
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(cache => {
-        console.log('[SW] Cacheando archivos críticos');
-        return cache.addAll(urlsToCache);
-      })
-      .then(() => {
-        // Activar inmediatamente el nuevo Service Worker
-        return self.skipWaiting();
-      })
-  );
+self.addEventListener('install', (event) => {
+    // console.log(`[SW] Instalando versión ${SW_VERSION}`);
+    
+    event.waitUntil(
+        caches.open(CACHE_NAME).then((cache) => {
+            // console.log('[SW] Cacheando archivos críticos');
+            return cache.addAll([
+                '/',
+                '/index.html',
+                '/src/main.jsx',
+                '/src/App.jsx',
+                '/src/index.css',
+                '/src/App.css'
+            ]);
+        })
+    );
 });
 
 // Activación del Service Worker
-self.addEventListener('activate', event => {
-  console.log(`[SW] Activando versión ${SW_VERSION}`);
-  
-  event.waitUntil(
-    caches.keys()
-      .then(cacheNames => {
-        return Promise.all(
-          cacheNames.map(cacheName => {
-            // Eliminar caches antiguos
-            if (cacheName !== CACHE_NAME) {
-              console.log(`[SW] Eliminando cache antiguo: ${cacheName}`);
-              return caches.delete(cacheName);
-            }
-          })
-        );
-      })
-      .then(() => {
-        // Tomar control de todas las páginas inmediatamente
-        return self.clients.claim();
-      })
-  );
+self.addEventListener('activate', (event) => {
+    // console.log(`[SW] Activando versión ${SW_VERSION}`);
+    
+    event.waitUntil(
+        caches.keys().then((cacheNames) => {
+            return Promise.all(
+                cacheNames.map((cacheName) => {
+                    if (cacheName !== CACHE_NAME) {
+                        // console.log(`[SW] Eliminando cache antiguo: ${cacheName}`);
+                        return caches.delete(cacheName);
+                    }
+                })
+            );
+        })
+    );
 });
 
 // Interceptar requests

@@ -49,14 +49,14 @@ const PDFStatementAnalyzer = ({ db, user, appId, onStatementAnalyzed, onNavigate
     const { settings: userSettings, isLoading: isLoadingSettings } = useUserSettings(db, user, appId);
     
     // Log inicial del componente
-    console.log('🔍 [DEBUG] PDFStatementAnalyzer montado con:', {
-        db: !!db,
-        user: !!user,
-        appId,
-        userSettings,
-        isLoadingSettings,
-        selectedAI
-    });
+    // console.log('🔍 [DEBUG] PDFStatementAnalyzer montado con:', {
+    //     db: !!db,
+    //     user: !!user,
+    //     appId,
+    //     userSettings,
+    //     isLoadingSettings,
+    //     selectedAI
+    // });
     const [correctionModal, setCorrectionModal] = useState({
         isOpen: false,
         transaction: null
@@ -79,7 +79,7 @@ const PDFStatementAnalyzer = ({ db, user, appId, onStatementAnalyzed, onNavigate
 
     // Función para validar y corregir datos de análisis
     const validateAndCorrectAnalysisData = (data) => {
-        console.log('🔍 [DEBUG] Validando y corrigiendo datos de análisis...');
+        // console.log('🔍 [DEBUG] Validando y corrigiendo datos de análisis...');
         
         if (!data || typeof data !== 'object') {
             console.warn('⚠️ Datos de análisis inválidos, devolviendo datos originales');
@@ -126,13 +126,13 @@ const PDFStatementAnalyzer = ({ db, user, appId, onStatementAnalyzed, onNavigate
             
             if (missingCriticalFields.length > 0) {
                 console.error(`🚨 ERROR CRÍTICO: Transacción ${index} (${transaction.description}) OMITE campos críticos:`, missingCriticalFields);
-                console.error(`   Campos presentes:`, Object.keys(transaction));
-                console.error(`   Campos esperados:`, ['date', 'description', 'amount', 'type', ...requiredFields]);
+                // console.error(`   Campos presentes:`, Object.keys(transaction));
+                // console.error(`   Campos esperados:`, ['date', 'description', 'amount', 'type', ...requiredFields]);
                 
                 // Forzar la inclusión de campos faltantes
                 missingCriticalFields.forEach(field => {
                     correctedTransaction[field] = null;
-                    console.warn(`   🔧 Campo ${field} forzado a null`);
+                    // console.warn(`   🔧 Campo ${field} forzado a null`);
                 });
             }
             
@@ -143,21 +143,21 @@ const PDFStatementAnalyzer = ({ db, user, appId, onStatementAnalyzed, onNavigate
             if (!transaction.foreignCurrencyAmount) missingFields.push('foreignCurrencyAmount');
             if (!transaction.foreignCurrencyCode) missingFields.push('foreignCurrencyCode');
             
-            if (missingFields.length > 0) {
-                console.warn(`⚠️ Transacción ${index} (${transaction.description}) le faltan campos:`, missingFields);
-                console.warn(`   Campos originales:`, Object.keys(transaction));
-            }
+            // if (missingFields.length > 0) {
+            //     console.warn(`⚠️ Transacción ${index} (${transaction.description}) le faltan campos:`, missingFields);
+            //     console.warn(`   Campos originales:`, Object.keys(transaction));
+            // }
             
             return correctedTransaction;
         });
         
-        console.log(`✅ Datos corregidos: ${data.transactions.length} transacciones procesadas`);
+        // console.log(`✅ Datos corregidos: ${data.transactions.length} transacciones procesadas`);
         return data;
     };
 
     // Función para validar y corregir transacciones por página
     const validateAndCorrectTransactions = (transactions) => {
-        console.log('🔍 [DEBUG] Validando y corrigiendo transacciones por página...');
+        // console.log('🔍 [DEBUG] Validando y corrigiendo transacciones por página...');
         
         if (!Array.isArray(transactions)) {
             console.warn('⚠️ Transacciones no es un array, creando array vacío');
@@ -200,13 +200,13 @@ const PDFStatementAnalyzer = ({ db, user, appId, onStatementAnalyzed, onNavigate
             
             if (missingCriticalFields.length > 0) {
                 console.error(`🚨 ERROR CRÍTICO: Transacción ${index} (${transaction.description}) OMITE campos críticos:`, missingCriticalFields);
-                console.error(`   Campos presentes:`, Object.keys(transaction));
-                console.error(`   Campos esperados:`, ['date', 'description', 'amount', 'type', 'group', ...requiredFields]);
+                // console.error(`   Campos presentes:`, Object.keys(transaction));
+                // console.error(`   Campos esperados:`, ['date', 'description', 'amount', 'type', 'group', ...requiredFields]);
                 
                 // Forzar la inclusión de campos faltantes
                 missingCriticalFields.forEach(field => {
                     correctedTransaction[field] = null;
-                    console.warn(`   🔧 Campo ${field} forzado a null`);
+                    // console.warn(`   🔧 Campo ${field} forzado a null`);
                 });
             }
             
@@ -217,15 +217,15 @@ const PDFStatementAnalyzer = ({ db, user, appId, onStatementAnalyzed, onNavigate
             if (!transaction.foreignCurrencyAmount) missingFields.push('foreignCurrencyAmount');
             if (!transaction.foreignCurrencyCode) missingFields.push('foreignCurrencyCode');
             
-            if (missingFields.length > 0) {
-                console.warn(`⚠️ Transacción ${index} (${transaction.description}) le faltan campos:`, missingFields);
-                console.warn(`   Campos originales:`, Object.keys(transaction));
-            }
+            // if (missingFields.length > 0) {
+            //     console.warn(`⚠️ Transacción ${index} (${transaction.description}) le faltan campos:`, missingFields);
+            //     console.warn(`   Campos originales:`, Object.keys(transaction));
+            // }
             
             return correctedTransaction;
         });
         
-        console.log(`✅ Transacciones corregidas: ${correctedTransactions.length} transacciones procesadas`);
+        // console.log(`✅ Transacciones corregidas: ${correctedTransactions.length} transacciones procesadas`);
         return correctedTransactions;
     };
 
@@ -409,10 +409,10 @@ Busca movimientos, compras, pagos, cargos, etc. de TODOS los grupos`
 
     const loadUserPatterns = useCallback(async () => {
         try {
-            console.log('Cargando patrones personalizados del usuario...');
+            // console.log('Cargando patrones personalizados del usuario...');
             const patterns = await loadUserCategoryPatterns(db, user.uid, appId);
             setUserPatterns(patterns);
-            console.log('Patrones cargados:', Object.keys(patterns).length);
+            // console.log('Patrones cargados:', Object.keys(patterns).length);
         } catch (error) {
             console.error('Error cargando patrones del usuario:', error);
         }
@@ -423,17 +423,17 @@ Busca movimientos, compras, pagos, cargos, etc. de TODOS los grupos`
     const loadCards = useCallback(async () => {
         try {
             setIsLoadingCards(true);
-            console.log('Cargando tarjetas...');
+            // console.log('Cargando tarjetas...');
             
             const cardsRef = collection(db, 'artifacts', appId, 'users', user.uid, 'creditCards');
             const querySnapshot = await getDocs(cardsRef);
             
-            console.log('Documentos encontrados:', querySnapshot.docs.length);
+            // console.log('Documentos encontrados:', querySnapshot.docs.length);
             
             const cardsData = [];
             for (const doc of querySnapshot.docs) {
                 const cardData = doc.data();
-                console.log('Procesando tarjeta:', doc.id, cardData);
+                // console.log('Procesando tarjeta:', doc.id, cardData);
                 
                 const decryptedCard = {
                     id: doc.id,
@@ -446,11 +446,11 @@ Busca movimientos, compras, pagos, cargos, etc. de TODOS los grupos`
                     createdAt: cardData.createdAt
                 };
                 
-                console.log('Tarjeta desencriptada:', decryptedCard);
+                // console.log('Tarjeta desencriptada:', decryptedCard);
                 cardsData.push(decryptedCard);
             }
             
-            console.log('Todas las tarjetas cargadas:', cardsData);
+            // console.log('Todas las tarjetas cargadas:', cardsData);
             setCards(cardsData);
             
         } catch (error) {
@@ -467,13 +467,13 @@ Busca movimientos, compras, pagos, cargos, etc. de TODOS los grupos`
     }, [db, user, appId]);
 
     const handleCardSelect = (cardId) => {
-        console.log('Seleccionando tarjeta:', cardId);
-        console.log('Tarjetas disponibles:', cards.map(c => ({ id: c.id, name: c.name })));
+        // console.log('Seleccionando tarjeta:', cardId);
+        // console.log('Tarjetas disponibles:', cards.map(c => ({ id: c.id, name: c.name })));
         setSelectedCard(cardId);
         
         // Verificar que la tarjeta existe
         const foundCard = cards.find(card => card.id === cardId);
-        console.log('Tarjeta encontrada:', foundCard);
+        // console.log('Tarjeta encontrada:', foundCard);
         
         if (!foundCard && cardId) {
             console.warn('⚠️ Tarjeta seleccionada no encontrada en la lista de tarjetas');
@@ -607,9 +607,9 @@ Busca movimientos, compras, pagos, cargos, etc. de TODOS los grupos`
                 );
                 return;
             }
-            console.log('Procesando archivo con tarjeta:', selectedCardData.name);
+            // console.log('Procesando archivo con tarjeta:', selectedCardData.name);
         } else {
-            console.log('Sin tarjeta seleccionada - se creará automáticamente desde el PDF');
+            // console.log('Sin tarjeta seleccionada - se creará automáticamente desde el PDF');
         }
 
         setIsAnalyzing(true);
@@ -626,44 +626,44 @@ Busca movimientos, compras, pagos, cargos, etc. de TODOS los grupos`
 
         try {
             const result = await analyzePDF(file);
-            console.log('🔍 [DEBUG] Resultado crudo de analyzePDF:', {
-                previousBalance: result?.previousBalance,
-                totalBalance: result?.totalBalance,
-                minimumPayment: result?.minimumPayment,
-                transactionsCount: result?.transactions?.length || 0,
-                fullResult: result
-            });
+            // console.log('🔍 [DEBUG] Resultado crudo de analyzePDF:', {
+            //     previousBalance: result?.previousBalance,
+            //     totalBalance: result?.totalBalance,
+            //     minimumPayment: result?.minimumPayment,
+            //     transactionsCount: result?.transactions?.length || 0,
+            //     fullResult: result
+            // });
             
             // Completar datos faltantes antes de mostrar y validar
             const enrichedResult = await enrichAnalysisResult(result);
-            console.log('🔍 [DEBUG] Resultado después de enriquecimiento:', {
-                previousBalance: enrichedResult?.previousBalance,
-                totalBalance: enrichedResult?.totalBalance,
-                minimumPayment: enrichedResult?.minimumPayment,
-                transactionsCount: enrichedResult?.transactions?.length || 0
-            });
+            // console.log('🔍 [DEBUG] Resultado después de enriquecimiento:', {
+            //     previousBalance: enrichedResult?.previousBalance,
+            //     totalBalance: enrichedResult?.totalBalance,
+            //     minimumPayment: enrichedResult?.minimumPayment,
+            //     transactionsCount: enrichedResult?.transactions?.length || 0
+            // });
             setAnalysisResult(enrichedResult);
             
             if (enrichedResult && Object.keys(enrichedResult).length > 0) {
-                console.log('🎯 Análisis exitoso, procediendo a validar:', enrichedResult);
+                // console.log('🎯 Análisis exitoso, procediendo a validar:', enrichedResult);
                 
                 // Debug: verificar qué campos tiene el result para la validación
-                console.log('🔍 Campos disponibles para validación:', {
-                    totalBalance: enrichedResult.totalBalance,
-                    previousBalance: enrichedResult.previousBalance,
-                    minimumPayment: enrichedResult.minimumPayment,
-                    dueDate: enrichedResult.dueDate,
-                    statementDate: enrichedResult.statementDate,
-                    transactions: enrichedResult.transactions?.length || 0
-                });
+                // console.log('🔍 Campos disponibles para validación:', {
+                //     totalBalance: enrichedResult.totalBalance,
+                //     previousBalance: enrichedResult.previousBalance,
+                //     minimumPayment: enrichedResult.minimumPayment,
+                //     dueDate: enrichedResult.dueDate,
+                //     statementDate: enrichedResult.statementDate,
+                //     transactions: enrichedResult.transactions?.length || 0
+                // });
                 
                 // Validar la consistencia de los datos extraídos
                 const validation = validateStatement(enrichedResult);
                 const formattedValidation = formatValidationResult(validation);
                 const confidenceScore = getConfidenceScore(validation);
                 
-                console.log('🔍 Resultado de validación:', validation);
-                console.log('📊 Puntuación de confianza:', confidenceScore);
+                // console.log('🔍 Resultado de validación:', validation);
+                // console.log('📊 Puntuación de confianza:', confidenceScore);
                 
                 setValidationResult({
                     ...formattedValidation,
@@ -672,9 +672,9 @@ Busca movimientos, compras, pagos, cargos, etc. de TODOS los grupos`
                 });
                 setShowValidation(true);
                 
-                console.log('💾 Procediendo a guardar:', result);
+                // console.log('💾 Procediendo a guardar:', result);
                 await saveStatementData(result);
-                console.log('💾 saveStatementData completado');
+                // console.log('💾 saveStatementData completado');
                 
                 // Pequeña pausa para asegurar consistencia en Firestore
                 await new Promise(resolve => setTimeout(resolve, 1000));
@@ -2111,7 +2111,7 @@ ${instructions.finalInstructionsComplete}`;
         }
         
         // Si es seguro crear automáticamente, hacerlo sin confirmación
-        if (isSafeToAutoCreate(duplicateAnalysis, analysisData)) {
+        if (isSafeToAutoCreate(duplicateAnalysis, analysisData, cards)) {
             console.log('✅ Es seguro crear automáticamente');
             showNotification(
                 'info',
@@ -2493,8 +2493,11 @@ ${instructions.finalInstructionsComplete}`;
                 
                 const amount = parseFloat(transaction.amount);
                 if (!isNaN(amount) && amount !== 0) {
-                    console.log(`✅ [UI] Saldo anterior encontrado: $${Math.abs(amount)} en "${transaction.description}"`);
-                    return Math.abs(amount);
+                    // IMPORTANTE: Preservar el signo original para saldos a favor
+                    // Un saldo negativo (-457.47) significa saldo a favor del cliente
+                    // Un saldo positivo (+378.64) significa deuda del cliente
+                    console.log(`✅ [UI] Saldo anterior encontrado: $${amount} en "${transaction.description}" (${amount >= 0 ? 'deuda' : 'saldo a favor'})`);
+                    return amount; // Retornar con signo original
                 }
             }
             
@@ -2502,8 +2505,8 @@ ${instructions.finalInstructionsComplete}`;
             if (i === 0 && transaction.type === 'saldo_anterior' && transaction.amount) {
                 const amount = parseFloat(transaction.amount);
                 if (!isNaN(amount)) {
-                    console.log(`✅ [UI] Saldo anterior por tipo: $${Math.abs(amount)}`);
-                    return Math.abs(amount);
+                    console.log(`✅ [UI] Saldo anterior por tipo: $${amount} (${amount >= 0 ? 'deuda' : 'saldo a favor'})`);
+                    return amount; // Retornar con signo original
                 }
             }
         }
@@ -3158,7 +3161,15 @@ Para continuar analizando, cambia a OpenAI en la configuración o espera hasta m
                                         <p><span className="font-medium">Saldo Actual:</span> ${analysisResult.totalBalance?.toLocaleString()}</p>
                                     )}
                                     {analysisResult.previousBalance !== null && (
-                                        <p><span className="font-medium">Saldo Anterior:</span> ${analysisResult.previousBalance?.toLocaleString()}</p>
+                                        <p>
+                                            <span className="font-medium">Saldo Anterior:</span> 
+                                            <span className={`ml-2 ${analysisResult.previousBalance >= 0 ? 'text-red-600' : 'text-green-600'}`}>
+                                                ${analysisResult.previousBalance >= 0 ? '+' : ''}{analysisResult.previousBalance?.toLocaleString()}
+                                            </span>
+                                            <span className="ml-2 text-sm text-gray-600">
+                                                ({analysisResult.previousBalance >= 0 ? 'deuda' : 'saldo a favor'})
+                                            </span>
+                                        </p>
                                     )}
                                     {analysisResult.creditLimit !== null && (
                                         <p><span className="font-medium">Límite:</span> ${analysisResult.creditLimit?.toLocaleString()}</p>
