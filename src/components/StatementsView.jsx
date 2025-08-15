@@ -82,7 +82,7 @@ const StatementsView = ({ db, user, appId }) => {
             let querySnapshot;
             try {
                 console.log('🔄 Intentando con orderBy desde servidor...');
-                const q = query(statementsRef, orderBy('analyzedAt', 'desc'));
+                const q = query(statementsRef, orderBy('statementDate', 'desc'));
                 querySnapshot = await getDocsFromServer(q);
                 console.log('✅ Lectura con orderBy desde servidor exitosa');
             } catch (orderError) {
@@ -378,12 +378,12 @@ const StatementsView = ({ db, user, appId }) => {
                     <select
                         value={filterCard}
                         onChange={(e) => setFilterCard(e.target.value)}
-                        className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 dark:bg-gray-700 dark:text-white"
+                        className="px-6 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 dark:bg-gray-700 dark:text-white min-w-64"
                     >
                         <option value="">Todas las tarjetas</option>
                         {cards.map(card => (
                             <option key={card.id} value={card.id}>
-                                {card.name}
+                                {card.name} - {card.cardNumber ? `****${card.cardNumber.slice(-4)}` : 'Sin número'}
                             </option>
                         ))}
                     </select>

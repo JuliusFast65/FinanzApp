@@ -45,6 +45,7 @@ const PDFStatementAnalyzer = ({ db, user, appId, onStatementAnalyzed, onNavigate
     const [previewImage, setPreviewImage] = useState(null);
     const [selectedAI, setSelectedAI] = useState(null); // Se establecerá basado en la configuración del usuario
     const [userPatterns, setUserPatterns] = useState({});
+    const [quotaExceeded, setQuotaExceeded] = useState(false); // Nuevo estado para controlar errores de cuota
     const { settings: userSettings, isLoading: isLoadingSettings } = useUserSettings(db, user, appId);
     
     // Log inicial del componente
@@ -686,27 +687,57 @@ Busca movimientos, compras, pagos, cargos, etc. de TODOS los grupos`
             }
         } catch (error) {
             console.error('Error al analizar PDF:', error);
-            // Detectar si es un error de cuota
-            const isQuotaError = error.message && (
-                error.message.includes('429') || 
-                error.message.includes('quota') ||
-                error.message.includes('Too Many Requests')
-            );
             
-            if (isQuotaError) {
+            // Detectar si es un error de cuota específico de Gemini
+            if (error.isQuotaError && error.message === 'GEMINI_QUOTA_EXCEEDED') {
+                // Actualizar estado para indicar que se excedió la cuota
+                setQuotaExceeded(true);
+                
                 showNotification(
                     'error',
-                    '⏳ Límite de Cuota Alcanzado',
-                    'Has alcanzado el límite de la API de IA. El análisis puede continuar con patrones básicos. Espera unos minutos o cambia a OpenAI para mejor cuota.',
-                    12000
+                    '⏳ Límite de Cuota de Gemini Alcanzado',
+                    `Has alcanzado el límite diario de 50 solicitudes de Gemini API. El análisis se ha detenido. Espera hasta mañana o cambia a OpenAI en la configuración.`,
+                    15000,
+                    {
+                        text: 'Ver Configuración',
+                        action: () => {
+                            // Cambiar automáticamente a OpenAI
+                            console.log('Usuario quiere cambiar a OpenAI');
+                            setSelectedAI('openai');
+                            setQuotaExceeded(false);
+                            showNotification(
+                                'success',
+                                '✅ Cambiado a OpenAI',
+                                'Ahora puedes continuar analizando con OpenAI. La cuota es mayor.',
+                                5000
+                            );
+                        },
+                        autoHide: false
+                    }
                 );
             } else {
-                showNotification(
-                    'error',
-                    '❌ Error de Análisis',
-                    'No se pudo analizar el PDF. Verifica que sea un estado de cuenta válido e intenta nuevamente.',
-                    8000
+                // Detectar si es un error de cuota general
+                const isQuotaError = error.message && (
+                    error.message.includes('429') || 
+                    error.message.includes('quota') ||
+                    error.message.includes('Too Many Requests')
                 );
+                
+                if (isQuotaError) {
+                    showNotification(
+                        'error',
+                        '⏳ Límite de Cuota Alcanzado',
+                        'Has alcanzado el límite de la API de IA. El análisis puede continuar con patrones básicos. Espera unos minutos o cambia a OpenAI para mejor cuota.',
+                        12000
+                    );
+                } else {
+                    showNotification(
+                        'error',
+                        '❌ Error de Análisis',
+                        'No se pudo analizar el PDF. Verifica que sea un estado de cuenta válido e intenta nuevamente.',
+                        8000
+                    );
+                }
             }
         } finally {
             setIsAnalyzing(false);
@@ -983,19 +1014,41 @@ ${instructions.finalInstructionsComplete}`;
             return transactions || [];
         } catch (error) {
             console.error(`Error analizando página ${pageNumber} para transacciones:`, error);
+            
+            // Si es un error de cuota de Gemini, propagarlo para detener el proceso
+            if (error.isQuotaError && error.message === 'GEMINI_QUOTA_EXCEEDED') {
+                throw error; // Propagar el error para que se maneje en el nivel superior
+            }
+            
+            // Para otros errores, retornar array vacío pero continuar
             return [];
         }
     };
 
     // Analizar página con Gemini solo para transacciones
+    // MANEJO DE ERRORES DE CUOTA:
+    // - Detecta específicamente errores 429, QuotaFailure, "exceeded your current quota"
+    // - Lanza un error personalizado GEMINI_QUOTA_EXCEEDED para detener el proceso
+    // - Permite que otros errores continúen el análisis
     const analyzePageTransactionsWithGemini = async (imageData, pageNumber) => {
         try {
             if (!genAI) {
                 throw new Error('Gemini API no está configurada');
             }
             
+            // Extraer el base64 del imageData (que viene como data URL)
             const base64Data = imageData.split(',')[1];
+            
             const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+            
+            console.log(`🔍 [DEBUG] === ANÁLISIS GEMINI PÁGINA ${pageNumber} ===`);
+            console.log(`🔍 [DEBUG] Tipo de imageData:`, typeof imageData);
+            console.log(`🔍 [DEBUG] Longitud de imageData:`, imageData?.length || 0);
+            console.log(`🔍 [DEBUG] Primeros 100 chars de imageData:`, imageData?.substring(0, 100));
+            console.log(`🔍 [DEBUG] Tipo de base64Data:`, typeof base64Data);
+            console.log(`🔍 [DEBUG] Longitud de base64Data:`, base64Data?.length || 0);
+            
+            const instructions = generateCommonInstructions();
             
             const prompt = `Analiza esta página ${pageNumber} de un estado de cuenta de tarjeta de crédito y extrae TODAS las transacciones en formato JSON estricto:
 
@@ -1126,6 +1179,26 @@ Busca movimientos, compras, pagos, cargos, etc. de TODOS los grupos`;
             return correctedTransactions;
         } catch (error) {
             console.error(`Error con Gemini página ${pageNumber}:`, error);
+            
+            // Detectar específicamente errores de cuota de Gemini
+            const isQuotaError = error.message && (
+                error.message.includes('429') ||
+                error.message.includes('quota') ||
+                error.message.includes('Too Many Requests') ||
+                error.message.includes('QuotaFailure') ||
+                error.message.includes('exceeded your current quota')
+            );
+            
+            if (isQuotaError) {
+                // Lanzar un error específico para que se maneje en el nivel superior
+                const quotaError = new Error('GEMINI_QUOTA_EXCEEDED');
+                quotaError.isQuotaError = true;
+                quotaError.originalError = error;
+                quotaError.pageNumber = pageNumber;
+                throw quotaError;
+            }
+            
+            // Para otros errores, retornar array vacío pero continuar
             return [];
         }
     };
@@ -1407,6 +1480,14 @@ ${instructions.finalInstructionsComplete}`;
     // Función principal de análisis
     const analyzePDF = async (file) => {
         try {
+            setIsAnalyzing(true);
+            setAnalysisProgress(0);
+            setExtractedText('🔄 Iniciando análisis del PDF...');
+            setQuotaExceeded(false); // Resetear estado de cuota al inicio
+            
+            console.log('🚀 Iniciando análisis de PDF:', file.name);
+            console.log('🔍 [DEBUG] IA seleccionada para análisis:', selectedAI);
+            
             // Validar que se haya seleccionado una IA
             if (!selectedAI) {
                 throw new Error('No se ha seleccionado una IA para el análisis. Por favor, espera a que se cargue la configuración o selecciona una manualmente.');
@@ -1502,7 +1583,44 @@ ${instructions.finalInstructionsComplete}`;
                         }
                     } catch (pageError) {
                         console.error(`❌ Error analizando página ${pageNum}:`, pageError);
-                        // Continuar con las siguientes páginas
+                        
+                        // Si es un error de cuota de Gemini, detener todo el proceso
+                        if (pageError.isQuotaError && pageError.message === 'GEMINI_QUOTA_EXCEEDED') {
+                            console.error('💥 ERROR CRÍTICO: Cuota de Gemini excedida. Deteniendo análisis.');
+                            
+                            // Actualizar estado para indicar que se excedió la cuota
+                            setQuotaExceeded(true);
+                            
+                            // Mostrar notificación específica de cuota
+                            showNotification(
+                                'error',
+                                '⏳ Límite de Cuota de Gemini Alcanzado',
+                                `Has alcanzado el límite diario de 50 solicitudes de Gemini API. El análisis se ha detenido. Espera hasta mañana o cambia a OpenAI en la configuración.`,
+                                15000,
+                                {
+                                    text: 'Ver Configuración',
+                                    action: () => {
+                                        // Cambiar automáticamente a OpenAI
+                                        console.log('Usuario quiere cambiar a OpenAI');
+                                        setSelectedAI('openai');
+                                        setQuotaExceeded(false);
+                                        showNotification(
+                                            'success',
+                                            '✅ Cambiado a OpenAI',
+                                            'Ahora puedes continuar analizando con OpenAI. La cuota es mayor.',
+                                            5000
+                                        );
+                                    },
+                                    autoHide: false
+                                }
+                            );
+                            
+                            // Detener el análisis y salir del bucle
+                            break;
+                        }
+                        
+                        // Para otros errores, continuar con las siguientes páginas
+                        console.log(`⚠️ Continuando con la siguiente página después del error...`);
                     }
                     
                     setAnalysisProgress(60 + ((i + 1) / images.length) * 25);
@@ -1941,6 +2059,40 @@ ${instructions.finalInstructionsComplete}`;
         console.log('💡 Sugerencias generadas:', suggestions);
         
         // 🔒 VALIDACIÓN: Solo proceder si hay datos suficientes para crear una tarjeta
+        if (!analysisData || typeof analysisData !== 'object') {
+            console.log('❌ analysisData es inválido:', analysisData);
+            showNotification(
+                'warning',
+                '⚠️ Datos Inválidos',
+                'Los datos del análisis no son válidos. No se puede crear una tarjeta.',
+                5000
+            );
+            return null;
+        }
+
+        // Validar que las propiedades críticas existan y sean del tipo correcto
+        const hasRequiredProperties = 
+            analysisData.bankName && 
+            typeof analysisData.bankName === 'string' &&
+            analysisData.lastFourDigits && 
+            typeof analysisData.lastFourDigits === 'string';
+
+        if (!hasRequiredProperties) {
+            console.log('❌ Propiedades críticas faltantes en analysisData:', {
+                bankName: analysisData.bankName,
+                lastFourDigits: analysisData.lastFourDigits,
+                bankNameType: typeof analysisData.bankName,
+                lastFourDigitsType: typeof analysisData.lastFourDigits
+            });
+            showNotification(
+                'warning',
+                '⚠️ Datos Insuficientes',
+                'No se pueden extraer datos suficientes de la tarjeta para crear un registro. El análisis continuará sin crear tarjeta.',
+                5000
+            );
+            return null;
+        }
+
         if (!hasSufficientDataForCardCreation(analysisData)) {
             console.log('❌ Datos insuficientes para crear tarjeta:', {
                 bankName: analysisData.bankName,
@@ -1988,6 +2140,22 @@ ${instructions.finalInstructionsComplete}`;
             console.log('🔄 Creando tarjeta automáticamente desde análisis...');
             
             // 🔒 VALIDACIÓN ADICIONAL antes de crear
+            if (!analysisData || typeof analysisData !== 'object') {
+                console.error('❌ analysisData es inválido en createCardFromAnalysis:', analysisData);
+                throw new Error('Datos de análisis inválidos');
+            }
+
+            // Validar propiedades críticas
+            if (!analysisData.bankName || typeof analysisData.bankName !== 'string') {
+                console.error('❌ bankName inválido en createCardFromAnalysis:', analysisData.bankName);
+                throw new Error('Nombre del banco inválido');
+            }
+
+            if (!analysisData.lastFourDigits || typeof analysisData.lastFourDigits !== 'string') {
+                console.error('❌ lastFourDigits inválido en createCardFromAnalysis:', analysisData.lastFourDigits);
+                throw new Error('Últimos 4 dígitos inválidos');
+            }
+            
             if (!hasSufficientDataForCardCreation(analysisData)) {
                 console.error('❌ Validación falló en createCardFromAnalysis');
                 throw new Error('Datos insuficientes para crear tarjeta');
@@ -2530,6 +2698,55 @@ ${instructions.finalInstructionsComplete}`;
         }
     };
 
+    // Función para mostrar información detallada sobre el error de cuota
+    const showQuotaErrorInfo = () => {
+        showNotification(
+            'info',
+            'ℹ️ Información sobre Límites de Cuota',
+            `Gemini API: 50 solicitudes gratuitas por día
+OpenAI: Mayor cuota disponible
+Para continuar analizando, cambia a OpenAI en la configuración o espera hasta mañana.`,
+            20000,
+            {
+                text: 'Cambiar a OpenAI',
+                action: () => {
+                    // Cambiar automáticamente a OpenAI
+                    console.log('Usuario quiere cambiar a OpenAI');
+                    setSelectedAI('openai');
+                    setQuotaExceeded(false);
+                    showNotification(
+                        'success',
+                        '✅ Cambiado a OpenAI',
+                        'Ahora puedes continuar analizando con OpenAI. La cuota es mayor.',
+                        5000
+                    );
+                },
+                autoHide: false
+            }
+        );
+    };
+
+    // Función para cambiar automáticamente a OpenAI
+    const switchToOpenAI = () => {
+        if (openai) {
+            setSelectedAI('openai');
+            setQuotaExceeded(false);
+            showNotification(
+                'success',
+                '✅ Cambiado a OpenAI',
+                'Ahora puedes continuar analizando con OpenAI. La cuota es mayor.',
+                5000
+            );
+        } else {
+            showNotification(
+                'error',
+                '❌ OpenAI no disponible',
+                'OpenAI no está configurado. Configura tu API key de OpenAI en la configuración.',
+                8000
+            );
+        }
+    };
+
     return (
         <div className="max-w-4xl mx-auto p-6 bg-white dark:bg-gray-800 rounded-lg shadow-lg">
             <div className="mb-6">
@@ -2722,6 +2939,65 @@ ${instructions.finalInstructionsComplete}`;
                                 className="bg-blue-600 h-2 rounded-full transition-all duration-300"
                                 style={{ width: `${analysisProgress}%` }}
                             ></div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Indicador de cuota excedida */}
+                {quotaExceeded && (
+                    <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
+                        <div className="flex items-start">
+                            <div className="flex-shrink-0">
+                                <svg className="h-5 w-5 text-red-400" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                                </svg>
+                            </div>
+                            <div className="ml-3">
+                                <h3 className="text-sm font-medium text-red-800 dark:text-red-200">
+                                    ⏳ Límite de Cuota Alcanzado
+                                </h3>
+                                <div className="mt-2 text-sm text-red-700 dark:text-red-300">
+                                    <p className="mb-2">
+                                        Has alcanzado el límite diario de 50 solicitudes de Gemini API. 
+                                        El análisis se ha detenido.
+                                    </p>
+                                    <div className="space-y-2">
+                                        <p><strong>Opciones disponibles:</strong></p>
+                                        <ul className="list-disc list-inside ml-4 space-y-1">
+                                            <li>Esperar hasta mañana para que se resetee la cuota</li>
+                                            <li>Cambiar a OpenAI en la configuración (mayor cuota disponible)</li>
+                                            <li>Usar solo la primera página del PDF (si ya se analizó)</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                                <div className="mt-4 flex space-x-3">
+                                    <button
+                                        onClick={showQuotaErrorInfo}
+                                        className="inline-flex items-center px-3 py-2 text-sm font-medium rounded-md bg-red-100 text-red-800 hover:bg-red-200 transition-colors"
+                                    >
+                                        ℹ️ Más Información
+                                    </button>
+                                    {openai && (
+                                        <button
+                                            onClick={switchToOpenAI}
+                                            className="inline-flex items-center px-3 py-2 text-sm font-medium rounded-md bg-green-100 text-green-800 hover:bg-green-200 transition-colors"
+                                        >
+                                            🔄 Cambiar a OpenAI
+                                        </button>
+                                    )}
+                                    {!openai && (
+                                        <div className="text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 px-2 py-1 rounded">
+                                            ⚠️ OpenAI no configurado
+                                        </div>
+                                    )}
+                                    <button
+                                        onClick={() => setQuotaExceeded(false)}
+                                        className="inline-flex items-center px-3 py-2 text-sm font-medium rounded-md bg-gray-100 text-gray-800 hover:bg-gray-200 transition-colors"
+                                    >
+                                        Ocultar
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 )}
@@ -3144,7 +3420,7 @@ ${instructions.finalInstructionsComplete}`;
                                     {notification.action && (
                                         <div className="mt-3">
                                             <button
-                                                onClick={notification.action.onClick}
+                                                onClick={notification.action.action}
                                                 className={`inline-flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
                                                     notification.type === 'success'
                                                         ? 'bg-green-100 text-green-800 hover:bg-green-200'
@@ -3153,7 +3429,7 @@ ${instructions.finalInstructionsComplete}`;
                                                         : 'bg-blue-100 text-blue-800 hover:bg-blue-200'
                                                 }`}
                                             >
-                                                {notification.action.label}
+                                                {notification.action.text}
                                             </button>
                                         </div>
                                     )}

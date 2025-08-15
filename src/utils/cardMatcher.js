@@ -338,15 +338,29 @@ export const generateCardSuggestions = (duplicateAnalysis) => {
  * Valida si es seguro crear una tarjeta automáticamente sin confirmación
  */
 export const isSafeToAutoCreate = (duplicateAnalysis, analysisData) => {
+    // 🔒 VALIDACIÓN ROBUSTA: Verificar que los parámetros existen y son válidos
+    if (!duplicateAnalysis || typeof duplicateAnalysis !== 'object') {
+        console.warn('⚠️ isSafeToAutoCreate: duplicateAnalysis es inválido:', duplicateAnalysis);
+        return false;
+    }
+
+    if (!analysisData || typeof analysisData !== 'object') {
+        console.warn('⚠️ isSafeToAutoCreate: analysisData es inválido:', analysisData);
+        return false;
+    }
+
     const { canCreateSafely, exactMatches, strongMatches, possibleMatches } = duplicateAnalysis;
     
     // 🔒 VALIDACIÓN ESTRICTA: Solo crear si tenemos TODOS los datos críticos
     const hasCompleteData = 
         analysisData.bankName && 
+        typeof analysisData.bankName === 'string' &&
         analysisData.bankName.trim() !== '' &&
         analysisData.lastFourDigits && 
+        typeof analysisData.lastFourDigits === 'string' &&
         analysisData.lastFourDigits.trim() !== '' &&
         analysisData.cardHolderName && 
+        typeof analysisData.cardHolderName === 'string' &&
         analysisData.cardHolderName.trim() !== '' &&
         analysisData.totalBalance !== null && 
         analysisData.totalBalance !== undefined;
@@ -356,22 +370,29 @@ export const isSafeToAutoCreate = (duplicateAnalysis, analysisData) => {
         analysisData.bankName !== 'Banco Desconocido' &&
         analysisData.lastFourDigits !== 'xxxx' &&
         analysisData.cardHolderName !== 'Titular Principal' &&
+        analysisData.lastFourDigits && 
+        typeof analysisData.lastFourDigits === 'string' &&
         analysisData.lastFourDigits.length === 4 &&
         /^\d{4}$/.test(analysisData.lastFourDigits);
 
-    // Ser más conservadores: solo auto-crear si realmente no hay coincidencias
-    const noAnyMatches = exactMatches.length === 0 && strongMatches.length === 0 && possibleMatches.length === 0;
+    // 🔓 SER MÁS INTELIGENTE: Vincular automáticamente si hay coincidencias fuertes
+    const hasStrongOrExactMatches = exactMatches && Array.isArray(exactMatches) && exactMatches.length > 0 || 
+                                   strongMatches && Array.isArray(strongMatches) && strongMatches.length > 0;
+    const noWeakMatches = !possibleMatches || !Array.isArray(possibleMatches) || possibleMatches.length === 0; // Solo posibles coincidencias débiles
     
-    const isSafe = canCreateSafely && hasCompleteData && hasValidData && noAnyMatches;
+    // Es seguro crear si no hay coincidencias, O si hay coincidencias fuertes (para vincular automáticamente)
+    const isSafe = (canCreateSafely && hasCompleteData && hasValidData) || 
+                   (hasStrongOrExactMatches && hasCompleteData && hasValidData && noWeakMatches);
     
     console.log('🔒 Evaluando si es seguro auto-crear:', {
         canCreateSafely,
         hasCompleteData,
         hasValidData,
-        noAnyMatches,
-        exactMatches: exactMatches.length,
-        strongMatches: strongMatches.length,
-        possibleMatches: possibleMatches.length,
+        hasStrongOrExactMatches,
+        noWeakMatches,
+        exactMatches: exactMatches?.length || 0,
+        strongMatches: strongMatches?.length || 0,
+        possibleMatches: possibleMatches?.length || 0,
         dataQuality: {
             bankName: analysisData.bankName,
             lastFourDigits: analysisData.lastFourDigits,
@@ -388,17 +409,27 @@ export const isSafeToAutoCreate = (duplicateAnalysis, analysisData) => {
  * Valida si los datos del análisis son suficientes para mostrar opciones de creación de tarjeta
  */
 export const hasSufficientDataForCardCreation = (analysisData) => {
+    // 🔒 VALIDACIÓN ROBUSTA: Verificar que analysisData existe y es un objeto
+    if (!analysisData || typeof analysisData !== 'object') {
+        console.warn('⚠️ hasSufficientDataForCardCreation: analysisData es inválido:', analysisData);
+        return false;
+    }
+
     // Verificar que tengamos al menos los datos mínimos para mostrar opciones
     const hasMinimumData = 
         analysisData.bankName && 
+        typeof analysisData.bankName === 'string' &&
         analysisData.bankName.trim() !== '' &&
         analysisData.lastFourDigits && 
+        typeof analysisData.lastFourDigits === 'string' &&
         analysisData.lastFourDigits.trim() !== '';
 
     // Verificar que los datos no sean valores por defecto
     const hasValidData = 
         analysisData.bankName !== 'Banco Desconocido' &&
         analysisData.lastFourDigits !== 'xxxx' &&
+        analysisData.lastFourDigits && 
+        typeof analysisData.lastFourDigits === 'string' &&
         analysisData.lastFourDigits.length === 4 &&
         /^\d{4}$/.test(analysisData.lastFourDigits);
 
@@ -410,7 +441,10 @@ export const hasSufficientDataForCardCreation = (analysisData) => {
         dataQuality: {
             bankName: analysisData.bankName,
             lastFourDigits: analysisData.lastFourDigits,
-            cardHolderName: analysisData.cardHolderName
+            cardHolderName: analysisData.cardHolderName,
+            bankNameType: typeof analysisData.bankName,
+            lastFourDigitsType: typeof analysisData.lastFourDigits,
+            lastFourDigitsLength: analysisData.lastFourDigits?.length
         },
         finalDecision: isSufficient
     });
