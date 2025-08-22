@@ -28,7 +28,7 @@
     "signInWithGoogle": "Se connecter avec Google"
   },
   "splash": {
-    "appName": "Introspect",
+    "appName": "FinanzApp",
     "tagline": "Votre Journal Personnel",
     "description": "Sauvegardez vos pensées et suivez vos habitudes avec un objectif.",
     "loadingDiary": "Chargement de votre journal...",
@@ -349,8 +349,8 @@
     "writeMessage": "Écrivez votre message...",
     "clearConversation": "Effacer la conversation du {{date}}"
   },
-  "advancedIntrospectiveAssistant": {
-    "title": "Assistant Introspectif",
+  "advancedFinancialAssistant": {
+    "title": "Assistant Financier",
     "loadingConversation": "Chargement de la conversation du {{date}}...",
     "clearConversation": "Effacer la conversation du {{date}}",
     "clearConversationConfirm": "Êtes-vous sûr de vouloir effacer la conversation du {{date}} ?",
@@ -540,7 +540,7 @@
     "premium": "Premium",
     "changePlan": "Changer de plan",
     "premiumFeatures": "Fonctionnalités Premium",
-    "advancedIntrospectiveAssistant": "Assistant Introspectif Avancé",
+    "advancedFinancialAssistant": "Assistant Financier Avancé",
     "advancedWritingAssistant": "Assistant d'Écriture Avancé",
     "behaviorAnalysis": "Analyse de Comportement",
     "twoFactorAuth": "Authentification à Deux Facteurs",
@@ -604,7 +604,7 @@
   },
   "tutorial": {
     "welcome": {
-      "title": "Introspect",
+      "title": "FinanzApp",
       "content": "Votre journal personnel pour sauvegarder vos pensées et cultiver vos habitudes avec un but."
     },
     "entry": {
@@ -637,7 +637,7 @@
     },
     "goodbye": {
       "title": "Prêt à commencer !",
-      "content": "Profitez de votre introspection et croissance personnelle. Que chaque jour soit une opportunité de mieux vous connaître !"
+      "content": "Profitez de votre voyage financier et croissance personnelle. Que chaque jour soit une opportunité d'améliorer votre santé financière !"
     },
     "navigation": {
       "previous": "Précédent",

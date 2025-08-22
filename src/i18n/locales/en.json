@@ -28,11 +28,11 @@
     "signInWithGoogle": "Sign in with Google"
   },
   "splash": {
-    "appName": "Introspect",
-    "tagline": "Your Personal Diary",
-    "description": "Save your thoughts and track your habits with purpose.",
-    "loadingDiary": "Loading your diary...",
-    "myDiary": "My Diary"
+    "appName": "FinanzApp",
+    "tagline": "Your Personal Finance Manager",
+    "description": "Take control of your finances and track your spending with purpose.",
+    "loadingDiary": "Loading your finances...",
+    "myDiary": "My Finances"
   },
   "diary": {
     "entry": "Entry",
@@ -349,8 +349,8 @@
     "writeMessage": "Write your message...",
     "clearConversation": "Clear conversation from {{date}}"
   },
-  "advancedIntrospectiveAssistant": {
-    "title": "Introspective Assistant",
+  "advancedFinancialAssistant": {
+    "title": "Financial Assistant",
     "loadingConversation": "Loading conversation from {{date}}...",
     "clearConversation": "Clear conversation from {{date}}",
     "clearConversationConfirm": "Are you sure you want to clear the conversation from {{date}}?",
@@ -551,7 +551,7 @@
     "premium": "Premium",
     "changePlan": "Change plan",
     "premiumFeatures": "Premium Features",
-    "advancedIntrospectiveAssistant": "Advanced Introspective Assistant",
+    "advancedFinancialAssistant": "Advanced Financial Assistant",
     "advancedWritingAssistant": "Advanced Writing Assistant",
     "behaviorAnalysis": "Behavior Analysis",
     "twoFactorAuth": "Two-Factor Authentication",
@@ -615,8 +615,8 @@
   },
   "tutorial": {
     "welcome": {
-      "title": "Introspect",
-      "content": "Your personal diary to save your thoughts and cultivate your habits with purpose."
+      "title": "FinanzApp",
+      "content": "Your personal finance manager to take control of your money and track your spending with purpose."
     },
     "entry": {
       "title": "Entry",
@@ -648,7 +648,7 @@
     },
     "goodbye": {
       "title": "Ready to start!",
-      "content": "Enjoy your introspection and personal growth. May each day be an opportunity to know yourself better!"
+      "content": "Enjoy your financial journey and personal growth. May each day be an opportunity to improve your financial health!"
     },
     "navigation": {
       "previous": "Previous",

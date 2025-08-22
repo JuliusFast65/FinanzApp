@@ -6,16 +6,34 @@ import { categorizeTransactions, TRANSACTION_CATEGORIES } from '../utils/transac
 import { loadUserCategoryPatterns } from '../utils/userCategoryPatterns';
 import { validateStatement, formatValidationResult, getConfidenceScore } from '../utils/statementValidator';
 import { parseAIResponse, parseStatementResponse, parseTransactionsResponse, logParsingError } from '../utils/jsonParser';
-import { findPotentialDuplicates, generateCardSuggestions, isSafeToAutoCreate, hasSufficientDataForCardCreation } from '../utils/cardMatcher';
+import { findExactCardMatch, generateCardSuggestions, isSafeToAutoCreate, hasSufficientDataForCardCreation } from '../utils/cardMatcher';
 import { useUserSettings } from '../utils/userSettings';
 import CategoryCorrectionModal from './CategoryCorrectionModal';
 import CardCreationModal from './CardCreationModal';
 import * as pdfjsLib from 'pdfjs-dist';
 import OpenAI from 'openai';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { extractTextFromPDF, analyzeStatementText } from '../utils/pdfUtils';
 
 // Configurar el worker de PDF.js
 pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+
+
+// Ejemplo de función para análisis simple
+const handleSimplePDFAnalysis = async (file) => {
+  setIsAnalyzing(true);
+  setAnalysisResult(null);
+  try {
+    const text = await extractTextFromPDF(file);
+    setExtractedText(text);
+    const txs = analyzeStatementText(text);
+    setAnalysisResult({ transactions: txs });
+  } catch (err) {
+    showNotification('error', 'Error', 'No se pudo analizar el PDF.', 5000);
+  }
+  setIsAnalyzing(false);
+};
+
 
 // Validar y configurar OpenAI
 let openai = null;
@@ -813,6 +831,30 @@ Busca movimientos, compras, pagos, cargos, etc. de TODOS los grupos`
     const parseAIResponse = (content) => {
         try {
             console.log('🔍 Usando parser robusto para statement...');
+            
+            // Verificar si la respuesta está vacía o es muy corta
+            if (!content || content.trim() === '' || content.trim() === '[]' || content.trim() === '{}') {
+                console.warn('⚠️ La IA devolvió una respuesta vacía o sin contenido útil');
+                return {
+                    error: 'EMPTY_RESPONSE',
+                    message: 'La IA no pudo extraer información útil del PDF. Esto puede suceder por varias razones:',
+                    reasons: [
+                        'El PDF puede estar corrupto o tener baja calidad',
+                        'El formato del PDF puede ser muy complejo',
+                        'La IA puede estar experimentando problemas temporales',
+                        'El PDF puede no contener un estado de cuenta estándar'
+                    ],
+                    suggestions: [
+                        'Intenta con otro PDF del mismo banco',
+                        'Verifica que el PDF sea legible y de buena calidad',
+                        'Espera unos minutos y vuelve a intentar',
+                        'Si el problema persiste, contacta al soporte'
+                    ],
+                    totalBalance: null,
+                    transactions: []
+                };
+            }
+            
             const result = parseStatementResponse(content);
             
             console.log('🔍 [DEBUG] Resultado del parser:', {
@@ -1550,6 +1592,43 @@ ${instructions.finalInstructionsComplete}`;
                 );
             }
             
+            // Verificar si hay error específico de respuesta vacía
+            if (analysis && analysis.error === 'EMPTY_RESPONSE') {
+                console.log('📭 La IA devolvió respuesta vacía - mostrando mensaje amistoso al usuario');
+                
+                // Mostrar notificación específica para respuesta vacía
+                showNotification(
+                    'warning',
+                    '🤔 No se pudo extraer información del PDF',
+                    'La IA no pudo extraer información útil. Esto puede suceder por varias razones. Revisa la consola para más detalles.',
+                    12000
+                );
+                
+                // Actualizar el texto extraído con información útil
+                setExtractedText(`❌ La IA no pudo extraer información útil del PDF.
+
+🔍 Posibles causas:
+• El PDF puede estar corrupto o tener baja calidad
+• El formato del PDF puede ser muy complejo
+• La IA puede estar experimentando problemas temporales
+• El PDF puede no contener un estado de cuenta estándar
+
+💡 Sugerencias:
+• Intenta con otro PDF del mismo banco
+• Verifica que el PDF sea legible y de buena calidad
+• Espera unos minutos y vuelve a intentar
+• Si el problema persiste, contacta al soporte
+
+📋 Detalles técnicos:
+• Respuesta de la IA: ${analysis.originalContent || 'Vacía'}
+• Error: ${analysis.message}`);
+                
+                // Detener el análisis aquí ya que no hay datos útiles
+                setIsAnalyzing(false);
+                setAnalysisProgress(0);
+                return;
+            }
+            
             console.log('📄 Análisis página 1 completado:', analysis);
             setAnalysisProgress(60);
             
@@ -2051,11 +2130,11 @@ ${instructions.finalInstructionsComplete}`;
             creditLimit: analysisData.creditLimit
         });
         
-        // Buscar duplicados potenciales
-        const duplicateAnalysis = findPotentialDuplicates(cards, analysisData);
-        const suggestions = generateCardSuggestions(duplicateAnalysis);
+        // Buscar coincidencia exacta de tarjeta
+        const cardMatchResult = findExactCardMatch(cards, analysisData);
+        const suggestions = generateCardSuggestions(cardMatchResult, cards);
         
-        console.log('📊 Análisis de duplicados:', duplicateAnalysis);
+        console.log('📊 Análisis de coincidencia exacta:', cardMatchResult);
         console.log('💡 Sugerencias generadas:', suggestions);
         
         // 🔒 VALIDACIÓN: Solo proceder si hay datos suficientes para crear una tarjeta
@@ -2111,15 +2190,34 @@ ${instructions.finalInstructionsComplete}`;
         }
         
         // Si es seguro crear automáticamente, hacerlo sin confirmación
-        if (isSafeToAutoCreate(duplicateAnalysis, analysisData, cards)) {
-            console.log('✅ Es seguro crear automáticamente');
-            showNotification(
-                'info',
-                '🤖 Creando Tarjeta Automáticamente',
-                'No se encontraron tarjetas similares. Creando nueva tarjeta...',
-                3000
-            );
-            return await createCardFromAnalysis(analysisData);
+        if (isSafeToAutoCreate(cardMatchResult, analysisData, cards)) {
+            // Verificar si hay coincidencia exacta
+            if (cardMatchResult.exactMatches && cardMatchResult.exactMatches.length > 0) {
+                // Hay coincidencia exacta - usar la tarjeta existente
+                const existingCard = cardMatchResult.exactMatches[0].card;
+                console.log('🎯 Usando tarjeta existente:', existingCard.name);
+                setSelectedCard(existingCard.id);
+                
+                showNotification(
+                    'success',
+                    '🔗 Tarjeta Vinculada',
+                    `Estado de cuenta vinculado automáticamente con "${existingCard.name}"`,
+                    3000
+                );
+                
+                // Continuar con el guardado del statement usando la tarjeta existente
+                return await saveStatementData(analysisData, false, existingCard.id);
+            } else {
+                // No hay coincidencia pero es la primera tarjeta - crear automáticamente
+                console.log('✅ Es seguro crear automáticamente (primera tarjeta)');
+                showNotification(
+                    'info',
+                    '🤖 Creando Primera Tarjeta',
+                    'No hay tarjetas existentes. Creando nueva tarjeta...',
+                    3000
+                );
+                return await createCardFromAnalysis(analysisData);
+            }
         }
         
         // Si no es seguro, mostrar modal de confirmación
@@ -2771,11 +2869,6 @@ Para continuar analizando, cambia a OpenAI en la configuración o espera hasta m
                                 ⏳ Cargando configuración...
                             </span>
                         )}
-                        {!isLoadingSettings && userSettings?.defaultAI && (
-                            <span className="ml-2 text-xs text-green-600 dark:text-green-400">
-                                ✅ Configuración del usuario aplicada
-                            </span>
-                        )}
                     </label>
                     <div className="grid grid-cols-2 gap-3 mb-4">
                         <button
@@ -2826,28 +2919,6 @@ Para continuar analizando, cambia a OpenAI en la configuración o espera hasta m
                             </div>
                         </button>
                     </div>
-                    
-                    {/* Información sobre cuotas */}
-                    <div className="text-xs text-gray-600 dark:text-gray-400 bg-yellow-50 dark:bg-yellow-900/20 p-3 rounded-lg border border-yellow-200 dark:border-yellow-800 mb-4">
-                        <p className="font-medium mb-1">💡 Información de Cuotas:</p>
-                        <p><strong>Gemini:</strong> 15 requests/min, 1,500/día (gratis)</p>
-                        <p><strong>OpenAI:</strong> Mayor cuota disponible (requiere saldo)</p>
-                        <p><strong>Tip:</strong> Si aparece error de cuota, espera 1-2 minutos o cambia de IA</p>
-                    </div>
-                    
-                    {/* Estado de la configuración */}
-                    {isLoadingSettings && (
-                        <div className="text-xs text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg border border-blue-200 dark:border-blue-800 mb-4">
-                            <p className="font-medium mb-1">⏳ Cargando configuración personalizada...</p>
-                            <p>Se aplicará automáticamente tu IA preferida del perfil</p>
-                        </div>
-                    )}
-                    {!isLoadingSettings && userSettings?.defaultAI && (
-                        <div className="text-xs text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 p-3 rounded-lg border border-green-200 dark:border-green-800 mb-4">
-                            <p className="font-medium mb-1">✅ Configuración aplicada</p>
-                            <p>Usando <strong>{userSettings.defaultAI === 'gemini' ? 'Gemini 1.5 Flash' : 'OpenAI GPT-4o'}</strong> según tu perfil</p>
-                        </div>
-                    )}
                 </div>
 
                 {/* Selección de tarjeta */}
@@ -3006,7 +3077,7 @@ Para continuar analizando, cambia a OpenAI en la configuración o espera hasta m
                 )}
 
                 {/* Información del archivo */}
-                {fileInfo && (
+                {fileInfo && !quotaExceeded && !(analysisResult && analysisResult.error === 'EMPTY_RESPONSE') && (
                     <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4">
                         <h3 className="text-lg font-semibold text-blue-900 dark:text-blue-100 mb-2">
                             Información del Archivo
@@ -3033,7 +3104,7 @@ Para continuar analizando, cambia a OpenAI en la configuración o espera hasta m
                 )}
 
                 {/* Preview de la imagen */}
-                {previewImage && (
+                {previewImage && !quotaExceeded && !(analysisResult && analysisResult.error === 'EMPTY_RESPONSE') && (
                     <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
                         <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
                             Vista Previa del Documento
@@ -3050,7 +3121,7 @@ Para continuar analizando, cambia a OpenAI en la configuración o espera hasta m
                 )}
 
                 {/* Status del análisis */}
-                {extractedText && (
+                {extractedText && !quotaExceeded && !(analysisResult && analysisResult.error === 'EMPTY_RESPONSE') && (
                     <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
                         <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
                             Estado del Análisis
@@ -3060,7 +3131,7 @@ Para continuar analizando, cambia a OpenAI en la configuración o espera hasta m
                 )}
 
                 {/* Componente de Validación */}
-                {showValidation && validationResult && (
+                {showValidation && validationResult && !quotaExceeded && !(analysisResult && analysisResult.error === 'EMPTY_RESPONSE') && (
                     <div className={`p-4 rounded-lg border-2 mb-6 ${
                         validationResult.status === 'success' 
                             ? 'border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-900/20'
@@ -3127,7 +3198,7 @@ Para continuar analizando, cambia a OpenAI en la configuración o espera hasta m
                 )}
 
                 {/* Resultados del análisis */}
-                {analysisResult && (
+                {analysisResult && !quotaExceeded && !(analysisResult.error === 'EMPTY_RESPONSE') && (
                     <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-6 border border-green-200 dark:border-green-800">
                         <h3 className="text-xl font-semibold text-green-900 dark:text-green-100 mb-4">
                             ✅ Análisis Completado

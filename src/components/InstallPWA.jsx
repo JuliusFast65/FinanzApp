@@ -222,12 +222,12 @@ const InstallPWA = () => {
 
                         {/* Título */}
                         <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-                            Instalar Introspect
+                            Instalar FinanzApp
                         </h3>
 
                         {/* Descripción */}
                         <p className="text-gray-600 dark:text-gray-300 mb-6">
-                            Instala Introspect en tu dispositivo para acceder más rápido y usar la app sin conexión.
+                            Instala FinanzApp en tu dispositivo para acceder más rápido y usar la app sin conexión.
                         </p>
 
                         {/* Contenido específico por plataforma */}

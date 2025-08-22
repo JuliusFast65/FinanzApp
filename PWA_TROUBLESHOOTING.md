@@ -31,7 +31,7 @@ Visita `/pwa-test.html` en tu aplicación para verificar que todos los criterios
 ```
 
 #### 3. Verificar instalación manual
-- **Chrome/Edge:** Menú (⋮) > "Instalar Introspect"
+- **Chrome/Edge:** Menú (⋮) > "Instalar FinanzApp"
 - **Safari iOS:** 
   1. Tocar botón "Compartir" (cuadrado con flecha)
   2. Desplazar hacia abajo
@@ -114,7 +114,7 @@ Visita `/pwa-test.html` en tu aplicación para verificar que todos los criterios
 ```html
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-<meta name="apple-mobile-web-app-title" content="Introspect" />
+<meta name="apple-mobile-web-app-title" content="FinanzApp" />
 <meta name="apple-touch-fullscreen" content="yes" />
 <meta name="apple-mobile-web-app-orientations" content="portrait" />
 ```

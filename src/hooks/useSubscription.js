@@ -67,7 +67,7 @@ export default function useSubscription(db, user, appId) {
         const premiumFeatures = {
             'therapy_chat': subscription.plan === 'premium',
             'writing_assistant': subscription.plan === 'premium',
-            'advanced_introspective_assistant': subscription.plan === 'premium',
+            'advanced_financial_assistant': subscription.plan === 'premium',
             'behavior_analysis': subscription.plan === 'premium',
             'two_factor_auth': subscription.plan === 'premium',
             'unlimited_activities': subscription.plan === 'premium',

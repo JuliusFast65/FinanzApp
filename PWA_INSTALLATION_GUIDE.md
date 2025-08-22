@@ -1,8 +1,8 @@
-# Guía de Instalación PWA - Introspect
+# Guía de Instalación PWA - FinanzApp
 
 ## 📱 Funcionalidad de Instalación PWA
 
-La aplicación Introspect ahora incluye un sistema completo de instalación PWA que funciona en todas las plataformas principales:
+La aplicación FinanzApp ahora incluye un sistema completo de instalación PWA que funciona en todas las plataformas principales:
 
 ### 🎯 Características Implementadas
 
@@ -62,8 +62,8 @@ Para que el navegador muestre el prompt de instalación, la app debe cumplir:
 #### **✅ Campos del Manifest**
 ```json
 {
-  "name": "Introspect - Tu Diario Personal",
-  "short_name": "Introspect",
+          "name": "FinanzApp - Control Total de tus Finanzas",
+        "short_name": "FinanzApp",
   "id": "/",
   "description": "Tu diario personal seguro...",
   "theme_color": "#111827",
@@ -105,9 +105,9 @@ Para que el navegador muestre el prompt de instalación, la app debe cumplir:
 ##### **Desktop/Android (Chrome/Edge)**
 ```
 ┌─────────────────────────────────┐
-│         📱 Instalar Introspect  │
+│         📱 Instalar FinanzApp   │
 │                                 │
-│ Instala Introspect en tu        │
+│ Instala FinanzApp en tu         │
 │ dispositivo para acceder más    │
 │ rápido y usar la app sin        │
 │ conexión.                       │
@@ -123,9 +123,9 @@ Para que el navegador muestre el prompt de instalación, la app debe cumplir:
 ##### **iOS Safari**
 ```
 ┌─────────────────────────────────┐
-│         📱 Instalar Introspect  │
+│         📱 Instalar FinanzApp   │
 │                                 │
-│ Instala Introspect en tu        │
+│ Instala FinanzApp en tu         │
 │ dispositivo para acceder más    │
 │ rápido y usar la app sin        │
 │ conexión.                       │

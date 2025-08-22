@@ -12,7 +12,7 @@ Safari en iOS tiene un comportamiento único para las PWAs:
 
 ### Método 1: Banner Automático (Recomendado)
 1. **Abrir Safari** en tu iPhone/iPad
-2. **Navegar** a tu aplicación Introspect
+2. **Navegar** a tu aplicación FinanzApp
 3. **Esperar 3 segundos** - aparecerá un banner azul en la parte superior
 4. **Leer las instrucciones** en el banner
 5. **Seguir los pasos**:
@@ -23,7 +23,7 @@ Safari en iOS tiene un comportamiento único para las PWAs:
 
 ### Método 2: Instalación Manual
 1. **Abrir Safari** en tu iPhone/iPad
-2. **Navegar** a tu aplicación Introspect
+2. **Navegar** a tu aplicación FinanzApp
 3. **Tocar el botón "Compartir"** (cuadrado con flecha arriba)
 4. **Desplazar hacia abajo** en el menú
 5. **Tocar "Agregar a pantalla de inicio"**
@@ -33,7 +33,7 @@ Safari en iOS tiene un comportamiento único para las PWAs:
 
 ### Indicadores de Éxito:
 - ✅ La app aparece en la pantalla de inicio
-- ✅ Tiene el ícono de Introspect
+- ✅ Tiene el ícono de FinanzApp
 - ✅ Se abre como una app nativa (sin barra de Safari)
 - ✅ Funciona offline
 
@@ -79,7 +79,7 @@ Safari en iOS tiene un comportamiento único para las PWAs:
 ```html
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-<meta name="apple-mobile-web-app-title" content="Introspect" />
+<meta name="apple-mobile-web-app-title" content="FinanzApp" />
 <meta name="apple-touch-fullscreen" content="yes" />
 <meta name="apple-mobile-web-app-orientations" content="portrait" />
 ```

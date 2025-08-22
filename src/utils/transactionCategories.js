@@ -1,4 +1,29 @@
 // Sistema de categorización de transacciones
+// 
+// FUNCIONES OPTIMIZADAS PARA AHORRAR TOKENS:
+// 
+// 1. categorizePendingMerchants() - RECOMENDADA para categorización eficiente
+//    - Categoriza SOLO los comercios que no tienen patrones aplicados
+//    - Hace UNA SOLA petición a la IA con toda la lista
+//    - Ahorra tokens y reduce peticiones
+//    - Uso: await categorizePendingMerchants(transactions, userPatterns, userSettings)
+//
+// 2. categorizeMultipleTransactionsWithAI() - Para categorización masiva
+//    - Categoriza múltiples transacciones en una sola petición
+//    - Útil cuando ya sabes qué transacciones necesitan categorización
+//    - Uso: await categorizeMultipleTransactionsWithAI(transactions, useOpenAI)
+//
+// 3. categorizeTransactions() - Función principal (ya optimizada)
+//    - Usa automáticamente categorización masiva cuando es posible
+//    - Fallback a categorización individual si es necesario
+//    - Uso: await categorizeTransactions(transactions, userPatterns, userSettings)
+//
+// BENEFICIOS DE LA OPTIMIZACIÓN:
+// - Reduce peticiones a la IA de N a 1 (donde N = número de transacciones)
+// - Ahorra tokens al enviar todo en un solo prompt
+// - Mantiene la calidad de categorización
+// - Fallback automático si hay errores
+
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import OpenAI from 'openai';
 import { findUserCategoryPattern } from './userCategoryPatterns';
@@ -284,29 +309,122 @@ export const categorizeTransaction = async (transaction, userPatterns = null) =>
 
 // Función para categorizar múltiples transacciones
 export const categorizeTransactions = async (transactions, userPatterns = null, userSettings = null) => {
-    const categorizedTransactions = [];
+    console.log(`🚀 Iniciando categorización de ${transactions.length} transacciones...`);
     
-    for (const transaction of transactions) {
-        const result = await categorizeTransaction(transaction, userPatterns);
+    // Paso 1: Aplicar patrones del usuario (prioridad máxima)
+    let categorizedTransactions = transactions.map(transaction => {
+        if (userPatterns) {
+            const userPattern = findUserCategoryPattern(userPatterns, transaction.description);
+            if (userPattern) {
+                console.log(`✅ Categorizada por patrón del usuario: "${transaction.description}" → ${userPattern.category}`);
+                return {
+                    ...transaction,
+                    category: userPattern.category,
+                    categoryConfidence: 'user',
+                    categoryMethod: 'user_pattern',
+                    categoryPatternId: userPattern.id,
+                    categoryData: TRANSACTION_CATEGORIES[userPattern.category]
+                };
+            }
+        }
+        return transaction;
+    });
+    
+    // Paso 2: Aplicar patrones generales (rápido)
+    categorizedTransactions = categorizedTransactions.map(transaction => {
+        if (!transaction.category) {
+            const category = categorizeByPatterns(transaction.description);
+            if (category) {
+                console.log(`✅ Categorizada por patrón general: "${transaction.description}" → ${category}`);
+                return {
+                    ...transaction,
+                    category,
+                    categoryConfidence: 'high',
+                    categoryMethod: 'pattern',
+                    categoryData: TRANSACTION_CATEGORIES[category]
+                };
+            }
+        }
+        return transaction;
+    });
+    
+    // Paso 3: Identificar transacciones pendientes de categorización
+    const uncategorizedTransactions = categorizedTransactions.filter(t => !t.category);
+    
+    if (uncategorizedTransactions.length === 0) {
+        console.log('✅ Todas las transacciones categorizadas por patrones');
+        return categorizedTransactions;
+    }
+    
+    console.log(`📊 Transacciones pendientes de categorización: ${uncategorizedTransactions.length}`);
+    
+    // Paso 4: Usar categorización masiva con IA (optimizada)
+    if (uncategorizedTransactions.length > 1) {
+        console.log('🚀 Usando categorización masiva con IA para optimizar tokens...');
         
-        categorizedTransactions.push({
-            ...transaction,
-            category: result.category,
-            categoryConfidence: result.confidence,
-            categoryMethod: result.method,
-            categoryPatternId: result.patternId || null,
-            categoryData: TRANSACTION_CATEGORIES[result.category]
-        });
-        
-        // Pausa configurable para respetar límites de cuota
-        if (result.method === 'ai') {
-            // Usar delay configurado por el usuario o valor por defecto
-            const delay = userSettings?.autoCategorizationDelay || 2000;
-            console.log(`Esperando ${delay}ms antes de la siguiente categorización...`);
-            await new Promise(resolve => setTimeout(resolve, delay));
+        try {
+            const useOpenAI = userSettings?.preferOpenAI || false;
+            const bulkCategorized = await categorizeMultipleTransactionsWithAI(
+                categorizedTransactions, 
+                useOpenAI
+            );
+            
+            console.log(`✅ Categorización masiva completada: ${uncategorizedTransactions.length} transacciones procesadas`);
+            return bulkCategorized;
+            
+        } catch (error) {
+            console.warn('⚠️ Error en categorización masiva, fallando a método individual:', error);
+            // Continuar con método individual como fallback
         }
     }
     
+    // Paso 5: Fallback a categorización individual (solo si es necesario)
+    console.log('🔄 Aplicando categorización individual como fallback...');
+    
+    for (const transaction of uncategorizedTransactions) {
+        if (!transaction.category) {
+            const result = await categorizeTransaction(transaction, userPatterns);
+            
+            const transactionIndex = categorizedTransactions.findIndex(t => 
+                t.description === transaction.description && 
+                t.amount === transaction.amount
+            );
+            
+            if (transactionIndex !== -1) {
+                categorizedTransactions[transactionIndex] = {
+                    ...categorizedTransactions[transactionIndex],
+                    category: result.category,
+                    categoryConfidence: result.confidence,
+                    categoryMethod: result.method,
+                    categoryPatternId: result.patternId || null,
+                    categoryData: TRANSACTION_CATEGORIES[result.category]
+                };
+            }
+            
+            // Pausa configurable para respetar límites de cuota
+            if (result.method === 'ai') {
+                const delay = userSettings?.autoCategorizationDelay || 2000;
+                console.log(`Esperando ${delay}ms antes de la siguiente categorización...`);
+                await new Promise(resolve => setTimeout(resolve, delay));
+            }
+        }
+    }
+    
+    // Asegurar que todas las transacciones tengan categoría
+    categorizedTransactions = categorizedTransactions.map(transaction => {
+        if (!transaction.category) {
+            return {
+                ...transaction,
+                category: 'other',
+                categoryConfidence: 'low',
+                categoryMethod: 'fallback',
+                categoryData: TRANSACTION_CATEGORIES.other
+            };
+        }
+        return transaction;
+    });
+    
+    console.log(`✅ Categorización completada: ${categorizedTransactions.length} transacciones procesadas`);
     return categorizedTransactions;
 };
 
@@ -353,11 +471,273 @@ export const getCategoryStats = (transactions) => {
     };
 };
 
+// Función para categorizar múltiples transacciones en una sola petición a la IA
+export const categorizeMultipleTransactionsWithAI = async (transactions, useOpenAI = false) => {
+    try {
+        // Filtrar solo transacciones que no tienen categoría o que no fueron categorizadas por patrones
+        const uncategorizedTransactions = transactions.filter(t => !t.category || t.category === 'other');
+        
+        if (uncategorizedTransactions.length === 0) {
+            console.log('✅ Todas las transacciones ya están categorizadas');
+            return transactions;
+        }
+
+        console.log(`🚀 Categorizando ${uncategorizedTransactions.length} transacciones en una sola petición a la IA...`);
+
+        const categoryList = Object.entries(TRANSACTION_CATEGORIES)
+            .map(([key, data]) => `${key}: ${data.name}`)
+            .join(', ');
+
+        // Crear lista de comercios para categorizar
+        const merchantsList = uncategorizedTransactions.map(t => ({
+            description: t.description,
+            amount: Math.abs(t.amount || 0),
+            type: t.type || 'cargo'
+        }));
+
+        const prompt = `Categoriza los siguientes comercios/transacciones bancarias en una sola respuesta:
+
+LISTA DE COMERCIOS A CATEGORIZAR:
+${merchantsList.map((t, index) => `${index + 1}. "${t.description}" - $${t.amount} (${t.type})`).join('\n')}
+
+CATEGORÍAS DISPONIBLES:
+${categoryList}
+
+INSTRUCCIONES:
+- Responde SOLO con un JSON array donde cada elemento tenga: {"index": número, "category": "clave_categoría"}
+- El "index" debe corresponder al número de la lista (1, 2, 3, etc.)
+- Usa las claves exactas de categoría (food, transport, shopping, etc.)
+- Si no estás seguro de alguna, usa "other"
+- Considera el contexto mexicano/latinoamericano
+- Para montos pequeños en comercios como OXXO, considera "food"
+- Para servicios bancarios, considera "services"
+
+RESPUESTA (solo JSON):`;
+
+        let response;
+        
+        if (useOpenAI && import.meta.env.VITE_OPENAI_API_KEY) {
+            response = await openai.chat.completions.create({
+                model: "gpt-4o-mini",
+                messages: [{ role: "user", content: prompt }],
+                max_tokens: 500, // Aumentar tokens para múltiples categorías
+                temperature: 0.1
+            });
+            
+            const responseText = response.choices[0].message.content.trim();
+            return parseBulkCategorizationResponse(responseText, uncategorizedTransactions, transactions);
+            
+        } else if (import.meta.env.VITE_GEMINI_API_KEY) {
+            const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+            const result = await model.generateContent(prompt);
+            const responseText = result.response.text().trim();
+            
+            return parseBulkCategorizationResponse(responseText, uncategorizedTransactions, transactions);
+        }
+        
+        // Si no hay IA disponible, marcar como "other"
+        console.warn('⚠️ No hay IA disponible - marcando transacciones como "other"');
+        return markTransactionsAsOther(transactions);
+        
+    } catch (error) {
+        console.error('Error al categorizar múltiples transacciones con IA:', error);
+        
+        // Manejo específico de errores de cuota
+        if (error.message && error.message.includes('429')) {
+            console.warn('⚠️ Límite de cuota de IA alcanzado - usando categoría "other"');
+        } else if (error.message && error.message.includes('quota')) {
+            console.warn('⚠️ Cuota de IA excedida - usando categoría "other"');
+        }
+        
+        return markTransactionsAsOther(transactions);
+    }
+};
+
+// Función específica para categorizar solo comercios pendientes (optimizada para tokens)
+export const categorizePendingMerchants = async (transactions, userPatterns = null, userSettings = null) => {
+    console.log(`🔍 Identificando comercios pendientes de categorización...`);
+    
+    // Filtrar transacciones que no tienen categoría o que no fueron categorizadas por patrones
+    const pendingTransactions = transactions.filter(t => {
+        // Si ya tiene categoría y no es "other", no necesita categorización
+        if (t.category && t.category !== 'other') {
+            return false;
+        }
+        
+        // Si tiene patrones del usuario, no necesita categorización
+        if (userPatterns && findUserCategoryPattern(userPatterns, t.description)) {
+            return false;
+        }
+        
+        // Si tiene patrones generales, no necesita categorización
+        if (categorizeByPatterns(t.description)) {
+            return false;
+        }
+        
+        return true;
+    });
+    
+    if (pendingTransactions.length === 0) {
+        console.log('✅ No hay comercios pendientes de categorización');
+        return transactions;
+    }
+    
+    console.log(`📋 Comercios pendientes de categorización: ${pendingTransactions.length}`);
+    
+    // Crear lista de comercios para categorizar
+    const merchantsList = pendingTransactions.map(t => ({
+        description: t.description,
+        amount: Math.abs(t.amount || 0),
+        type: t.type || 'cargo'
+    }));
+    
+    console.log('📝 Lista de comercios a categorizar:');
+    merchantsList.forEach((merchant, index) => {
+        console.log(`  ${index + 1}. "${merchant.description}" - $${merchant.amount} (${merchant.type})`);
+    });
+    
+    // Usar categorización masiva para optimizar tokens
+    try {
+        const useOpenAI = userSettings?.preferOpenAI || false;
+        const categorizedTransactions = await categorizeMultipleTransactionsWithAI(
+            transactions, 
+            useOpenAI
+        );
+        
+        console.log(`✅ Categorización de comercios pendientes completada`);
+        return categorizedTransactions;
+        
+    } catch (error) {
+        console.error('Error en categorización de comercios pendientes:', error);
+        
+        // Fallback: marcar como "other"
+        return transactions.map(transaction => {
+            if (pendingTransactions.some(p => p.description === transaction.description)) {
+                return {
+                    ...transaction,
+                    category: 'other',
+                    categoryConfidence: 'low',
+                    categoryMethod: 'fallback',
+                    categoryData: TRANSACTION_CATEGORIES.other
+                };
+            }
+            return transaction;
+        });
+    }
+};
+
+// Función auxiliar para parsear la respuesta de categorización masiva
+const parseBulkCategorizationResponse = (responseText, uncategorizedTransactions, allTransactions) => {
+    try {
+        // Intentar extraer JSON de la respuesta
+        let jsonMatch = responseText.match(/\[.*\]/s);
+        if (!jsonMatch) {
+            // Si no hay JSON, buscar líneas con formato "index: category"
+            const lines = responseText.split('\n').filter(line => line.includes(':') || line.includes('→'));
+            const parsedCategories = {};
+            
+            lines.forEach(line => {
+                const match = line.match(/(\d+)[:\-→]\s*(\w+)/);
+                if (match) {
+                    const index = parseInt(match[1]) - 1; // Convertir a índice base 0
+                    const category = match[2].toLowerCase().trim();
+                    if (index >= 0 && index < uncategorizedTransactions.length) {
+                        parsedCategories[index] = category;
+                    }
+                }
+            });
+            
+            if (Object.keys(parsedCategories).length > 0) {
+                return applyBulkCategorization(parsedCategories, uncategorizedTransactions, allTransactions);
+            }
+        } else {
+            // Parsear JSON
+            const categories = JSON.parse(jsonMatch[0]);
+            const parsedCategories = {};
+            
+            categories.forEach(item => {
+                if (item.index && item.category) {
+                    const index = parseInt(item.index) - 1; // Convertir a índice base 0
+                    if (index >= 0 && index < uncategorizedTransactions.length) {
+                        parsedCategories[index] = item.category.toLowerCase().trim();
+                    }
+                }
+            });
+            
+            if (Object.keys(parsedCategories).length > 0) {
+                return applyBulkCategorization(parsedCategories, uncategorizedTransactions, allTransactions);
+            }
+        }
+        
+        console.warn('⚠️ No se pudo parsear la respuesta de categorización masiva');
+        return markTransactionsAsOther(allTransactions);
+        
+    } catch (parseError) {
+        console.error('Error parseando respuesta de categorización masiva:', parseError);
+        return markTransactionsAsOther(allTransactions);
+    }
+};
+
+// Función auxiliar para aplicar las categorías obtenidas
+const applyBulkCategorization = (parsedCategories, uncategorizedTransactions, allTransactions) => {
+    const updatedTransactions = [...allTransactions];
+    
+    Object.entries(parsedCategories).forEach(([indexStr, category]) => {
+        const index = parseInt(indexStr);
+        const transaction = uncategorizedTransactions[index];
+        
+        if (transaction && TRANSACTION_CATEGORIES[category]) {
+            // Encontrar la transacción en la lista completa y actualizarla
+            const transactionIndex = updatedTransactions.findIndex(t => 
+                t.description === transaction.description && 
+                t.amount === transaction.amount
+            );
+            
+            if (transactionIndex !== -1) {
+                updatedTransactions[transactionIndex] = {
+                    ...updatedTransactions[transactionIndex],
+                    category,
+                    categoryConfidence: 'medium',
+                    categoryMethod: 'bulk_ai',
+                    categoryData: TRANSACTION_CATEGORIES[category]
+                };
+                
+                console.log(`✅ Categorizada: "${transaction.description}" → ${category}`);
+            }
+        }
+    });
+    
+    // Marcar las no categorizadas como "other"
+    updatedTransactions.forEach(transaction => {
+        if (!transaction.category) {
+            transaction.category = 'other';
+            transaction.categoryConfidence = 'low';
+            transaction.categoryMethod = 'fallback';
+            transaction.categoryData = TRANSACTION_CATEGORIES.other;
+        }
+    });
+    
+    return updatedTransactions;
+};
+
+// Función auxiliar para marcar transacciones como "other"
+const markTransactionsAsOther = (transactions) => {
+    return transactions.map(transaction => ({
+        ...transaction,
+        category: transaction.category || 'other',
+        categoryConfidence: transaction.categoryConfidence || 'low',
+        categoryMethod: transaction.categoryMethod || 'fallback',
+        categoryData: transaction.categoryData || TRANSACTION_CATEGORIES.other
+    }));
+};
+
 export default {
     TRANSACTION_CATEGORIES,
-    TRANSACTION_TYPES, // Exportar los tipos de transacciones
+    TRANSACTION_TYPES,
     categorizeTransaction,
     categorizeTransactions,
+    categorizePendingMerchants, // Nueva función optimizada
+    categorizeMultipleTransactionsWithAI, // Nueva función para categorización masiva
     getCategoryStats,
     categorizeByPatterns,
     categorizeWithAI

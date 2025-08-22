@@ -1,8 +1,6 @@
 // Utilidad para limpiar tarjetas duplicadas existentes
 // Identifica y sugiere acciones para tarjetas que pueden ser duplicadas
 
-import { normalizeCardData } from './cardMatcher.js';
-
 /**
  * Encuentra tarjetas duplicadas en la lista existente
  * @param {Array} existingCards - Lista de tarjetas existentes
@@ -24,7 +22,6 @@ export const findExistingDuplicates = (existingCards) => {
         if (processedCards.has(i)) continue;
 
         const currentCard = existingCards[i];
-        const normalizedCurrent = normalizeCardData(currentCard);
         const group = [currentCard];
         processedCards.add(i);
 
@@ -33,10 +30,9 @@ export const findExistingDuplicates = (existingCards) => {
             if (processedCards.has(j)) continue;
 
             const compareCard = existingCards[j];
-            const normalizedCompare = normalizeCardData(compareCard);
 
-            // Verificar si son duplicados potenciales
-            if (isPotentialDuplicate(normalizedCurrent, normalizedCompare)) {
+            // Verificar si son duplicados potenciales usando comparación directa
+            if (isPotentialDuplicate(currentCard, compareCard)) {
                 group.push(compareCard);
                 processedCards.add(j);
             }
@@ -46,7 +42,6 @@ export const findExistingDuplicates = (existingCards) => {
         if (group.length > 1) {
             duplicateGroups.push({
                 cards: group,
-                similarityScore: calculateGroupSimilarity(group),
                 primaryCard: findPrimaryCard(group),
                 duplicateCards: group.slice(1)
             });
@@ -64,62 +59,34 @@ export const findExistingDuplicates = (existingCards) => {
 
 /**
  * Determina si dos tarjetas son potencialmente duplicadas
+ * 🔧 SIMPLIFICADO: Comparación directa sin normalización
  */
 const isPotentialDuplicate = (card1, card2) => {
     // Mismo banco y titular = duplicado fuerte
     if (card1.bank === card2.bank && 
-        card1.holderName === card2.holderName && 
+        card1.name === card2.name && 
         card1.bank && card2.bank && 
-        card1.holderName && card2.holderName) {
+        card1.name && card2.name) {
         return true;
     }
 
     // Mismo banco y últimos 4 dígitos = duplicado fuerte
     if (card1.bank === card2.bank && 
-        card1.lastFour === card2.lastFour && 
+        card1.cardNumber.slice(-4) === card2.cardNumber.slice(-4) && 
         card1.bank && card2.bank && 
-        card1.lastFour && card2.lastFour) {
+        card1.cardNumber && card2.cardNumber) {
         return true;
     }
 
     // Mismo titular y últimos 4 dígitos = duplicado fuerte
-    if (card1.holderName === card2.holderName && 
-        card1.lastFour === card2.lastFour && 
-        card1.holderName && card2.holderName && 
-        card1.lastFour && card2.lastFour) {
+    if (card1.name === card2.name && 
+        card1.cardNumber.slice(-4) === card2.cardNumber.slice(-4) && 
+        card1.name && card2.name && 
+        card1.cardNumber && card2.cardNumber) {
         return true;
     }
 
     return false;
-};
-
-/**
- * Calcula la similitud general de un grupo de tarjetas
- */
-const calculateGroupSimilarity = (cards) => {
-    if (cards.length < 2) return 100;
-
-    let totalSimilarity = 0;
-    let comparisons = 0;
-
-    for (let i = 0; i < cards.length; i++) {
-        for (let j = i + 1; j < cards.length; j++) {
-            const card1 = normalizeCardData(cards[i]);
-            const card2 = normalizeCardData(cards[j]);
-            
-            // Calcular similitud basada en banco, titular y últimos 4 dígitos
-            let similarity = 0;
-            
-            if (card1.bank === card2.bank) similarity += 33.33;
-            if (card1.holderName === card2.holderName) similarity += 33.33;
-            if (card1.lastFour === card2.lastFour) similarity += 33.33;
-            
-            totalSimilarity += similarity;
-            comparisons++;
-        }
-    }
-
-    return comparisons > 0 ? totalSimilarity / comparisons : 0;
 };
 
 /**
